@@ -1,0 +1,487 @@
+/* Kino mockups (AUG-1452). Same limits as web/: no variables, no grid, no backdrop-filter;
+   only transform and opacity animate. */
+
+@font-face {
+  font-family: 'Inter';
+  src: url('InterVariable.ttf') format('truetype');
+  font-weight: 100 900;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  color: #f4f2ee;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+/* The 1920×1080 canvas, scaled to fit any window. */
+#stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1920px;
+  height: 1080px;
+  margin: -540px 0 0 -960px;
+  overflow: hidden;
+  background: #0a0a0c;
+  opacity: 0;
+  transition: opacity .35s ease;
+}
+#stage.is-ready { opacity: 1; }
+
+/* ── Backdrops ─────────────────────────────────────────────── */
+
+.bg, .bg-layer, .bg-shade {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1920px;
+  height: 1080px;
+}
+.bg-layer {
+  background-size: cover;
+  background-position: center top;
+  opacity: 0;
+  transition: opacity .9s ease;
+}
+.bg-layer.is-on { opacity: 1; }
+
+/* ── Header: tabs and clock ────────────────────────────────── */
+
+.top {
+  text-shadow: 0 1px 12px rgba(0, 0, 0, .6);
+  position: absolute;
+  left: 112px;
+  right: 112px;
+  top: 52px;
+  height: 52px;
+  z-index: 20;
+  transition: opacity .35s ease;
+}
+.tabs { position: absolute; left: -18px; top: 0; white-space: nowrap; }
+.tab {
+  display: inline-block;
+  position: relative;
+  padding: 10px 18px;
+  margin-right: 4px;
+  font-size: 24px;
+  font-weight: 600;
+  color: rgba(244, 242, 238, .5);
+  border-radius: 26px;
+}
+.tab.is-current { color: #f4f2ee; }
+.tab.is-current:after {
+  content: '';
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 2px;
+  height: 3px;
+  border-radius: 2px;
+  background: #f4f2ee;
+}
+.tab.is-focus { background: #f4f2ee; color: #0a0a0c; }
+.tab.is-focus:after { opacity: 0; }
+
+.clock {
+  position: absolute;
+  right: 0;
+  top: 6px;
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: .5px;
+  color: rgba(244, 242, 238, .85);
+  font-variant-numeric: tabular-nums;
+}
+.clock small {
+  font-size: 22px;
+  font-weight: 500;
+  color: rgba(244, 242, 238, .5);
+  margin-right: 18px;
+}
+
+/* ── Type ──────────────────────────────────────────────────── */
+
+.kicker {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 2.4px;
+  text-transform: uppercase;
+  color: #f2b84b;
+}
+.kicker .dim { color: rgba(244, 242, 238, .55); }
+.meta {
+  font-size: 24px;
+  font-weight: 500;
+  color: rgba(244, 242, 238, .72);
+  white-space: nowrap;
+}
+.meta .sep { margin: 0 12px; color: rgba(244, 242, 238, .35); }
+.overview {
+  font-size: 25px;
+  line-height: 36px;
+  font-weight: 400;
+  color: rgba(244, 242, 238, .78);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.logo-wrap img {
+  display: block;
+  max-width: 620px;
+  max-height: 190px;
+}
+.logo-wrap .title-text {
+  width: 900px;
+  font-size: 92px;
+  line-height: 96px;
+  font-weight: 800;
+  letter-spacing: -2px;
+}
+
+/* ── Buttons ───────────────────────────────────────────────── */
+
+.btn {
+  display: inline-block;
+  position: relative;
+  height: 64px;
+  line-height: 64px;
+  padding: 0 34px 0 30px;
+  margin-right: 16px;
+  border-radius: 32px;
+  font-size: 24px;
+  font-weight: 650;
+  background: rgba(244, 242, 238, .16);
+  color: #f4f2ee;
+  white-space: nowrap;
+  transition: transform .2s ease;
+}
+.btn.is-primary { background: rgba(244, 242, 238, .92); color: #0a0a0c; }
+.btn .play {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 18px solid currentColor;
+  border-top: 11px solid transparent;
+  border-bottom: 11px solid transparent;
+  margin-right: 14px;
+  vertical-align: -2px;
+}
+.is-hero-focus .btn.is-primary { background: #fff; transform: scale(1.06); }
+.btn .app-chip { font-weight: 500; opacity: .6; margin-left: 10px; }
+
+.progress {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(244, 242, 238, .22);
+  overflow: hidden;
+}
+.progress i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: #f2b84b;
+  transform-origin: 0 0;
+}
+
+/* ── Rotation dots ─────────────────────────────────────────── */
+
+.dots { height: 10px; }
+.dots span {
+  display: inline-block;
+  position: relative;
+  width: 36px;
+  height: 4px;
+  margin-right: 8px;
+  border-radius: 2px;
+  background: rgba(244, 242, 238, .25);
+  overflow: hidden;
+}
+.dots span i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: #f4f2ee;
+  transform: scaleX(0);
+  transform-origin: 0 0;
+}
+.dots span.is-done i { transform: scaleX(1); }
+.dots span.is-on i { -webkit-animation: fill 8s linear forwards; animation: fill 8s linear forwards; }
+.is-paused .dots span.is-on i { -webkit-animation: none; animation: none; transform: scaleX(1); }
+@-webkit-keyframes fill { from { -webkit-transform: scaleX(0); } to { -webkit-transform: scaleX(1); } }
+@keyframes fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* ── Rows and cards ────────────────────────────────────────── */
+
+.row { position: relative; padding-left: 112px; margin-bottom: 52px; transition: opacity .35s ease; }
+.row.is-gone { opacity: 0; }
+.row h2 {
+  margin: 0 0 18px;
+  font-size: 28px;
+  font-weight: 650;
+  color: rgba(244, 242, 238, .9);
+}
+.row h2 .count { font-weight: 500; color: rgba(244, 242, 238, .4); margin-left: 12px; }
+.row h2 .tag {
+  display: inline-block;
+  margin-left: 14px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(244, 242, 238, .6);
+  border: 1px solid rgba(244, 242, 238, .25);
+  vertical-align: 4px;
+}
+.track {
+  white-space: nowrap;
+  transition: transform .32s cubic-bezier(.2, .8, .2, 1);
+}
+.item {
+  display: inline-block;
+  vertical-align: top;
+  margin-right: 24px;
+  white-space: normal;
+}
+.card {
+  position: relative;
+  border-radius: 14px;
+  background: #1b1b1f;
+  transition: transform .22s cubic-bezier(.2, .8, .2, 1);
+}
+.card-img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 14px;
+  background-size: cover;
+  background-position: center;
+}
+.card-shade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 60%;
+  border-radius: 0 0 14px 14px;
+  background: linear-gradient(to top, rgba(0, 0, 0, .78), rgba(0, 0, 0, 0));
+}
+.card-logo {
+  position: absolute;
+  left: 22px;
+  bottom: 24px;
+  max-width: 58%;
+  max-height: 64px;
+}
+.card-title {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  bottom: 22px;
+  font-size: 28px;
+  line-height: 32px;
+  font-weight: 750;
+  letter-spacing: -.3px;
+}
+.card .progress {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  bottom: 12px;
+  height: 5px;
+}
+.card .badge {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  background: #f2b84b;
+  color: #0a0a0c;
+}
+.card-ring {
+  position: absolute;
+  left: -6px;
+  top: -6px;
+  right: -6px;
+  bottom: -6px;
+  border-radius: 19px;
+  border: 4px solid #f4f2ee;
+  opacity: 0;
+  transition: opacity .18s ease;
+}
+.item.is-focus .card { transform: scale(1.07); }
+.item.is-focus .card-ring { opacity: 1; }
+.item.is-focus .card { box-shadow: 0 24px 50px rgba(0, 0, 0, .55); }
+
+.cap { padding: 16px 4px 0; transition: opacity .2s ease, transform .22s ease; }
+.cap b {
+  display: block;
+  font-size: 22px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: rgba(244, 242, 238, .88);
+}
+.cap span {
+  display: block;
+  margin-top: 4px;
+  font-size: 19px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: rgba(244, 242, 238, .5);
+}
+.item.is-focus .cap { transform: translateY(10px); }
+.item.is-focus .cap b { color: #fff; }
+
+/* Card sizes per row style. */
+.card--land, .card--yt, .card--friend { width: 384px; height: 216px; }
+.card--land + .cap, .card--yt + .cap, .card--friend + .cap { width: 376px; }
+.card--poster { width: 216px; height: 324px; }
+.card--poster + .cap { width: 208px; }
+.card--big { width: 560px; height: 315px; }
+.card--big + .cap { width: 552px; }
+.card--app { width: 256px; height: 144px; }
+
+/* Poster cards carry the title in the art. */
+.card--poster .card-shade { height: 30%; }
+
+/* The big continue card: text on the image. */
+.card--big .card-shade { height: 75%; }
+.card--big .big-text { position: absolute; left: 28px; right: 28px; bottom: 30px; }
+.card--big .big-text b { display: block; font-size: 30px; font-weight: 750; }
+.card--big .big-text span { display: block; margin-top: 6px; font-size: 21px; color: rgba(244, 242, 238, .75); }
+.card--big .card-logo { left: 28px; bottom: 96px; max-height: 70px; }
+.card--big .progress { left: 28px; right: 28px; bottom: 16px; }
+
+/* YouTube. */
+.yt-chan {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  padding: 5px 11px;
+  border-radius: 7px;
+  font-size: 16px;
+  font-weight: 650;
+  background: rgba(0, 0, 0, .7);
+}
+
+/* Friends: who, then what. */
+.avatar {
+  display: inline-block;
+  width: 44px;
+  height: 44px;
+  line-height: 44px;
+  border-radius: 22px;
+  text-align: center;
+  font-size: 19px;
+  font-weight: 750;
+  color: #0a0a0c;
+  background: #9fc3e6;
+}
+.card--friend .avatar { position: absolute; left: 16px; top: 16px; box-shadow: 0 0 0 3px rgba(10, 10, 12, .6); }
+.card--friend .avatar + .avatar { left: 46px; background: #f2b84b; }
+.card--friend .stars {
+  position: absolute;
+  right: 16px;
+  top: 18px;
+  font-size: 22px;
+  color: #f2b84b;
+  letter-spacing: 2px;
+}
+
+/* Apps: brand tiles. */
+.card--app { border-radius: 16px; overflow: visible; }
+.card--app .card-img { border-radius: 16px; }
+.app-word {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  margin-top: -22px;
+  height: 44px;
+  line-height: 44px;
+  text-align: center;
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -.5px;
+  white-space: nowrap;
+}
+.app-img { position: absolute; left: 50%; top: 50%; }
+
+/* ── Toast and mockup HUD ──────────────────────────────────── */
+
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: 70px;
+  z-index: 50;
+  width: 900px;
+  margin-left: -450px;
+  text-align: center;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity .25s ease, transform .25s ease;
+}
+.toast span {
+  display: inline-block;
+  padding: 18px 30px;
+  border-radius: 16px;
+  font-size: 24px;
+  font-weight: 550;
+  background: rgba(30, 30, 34, .96);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, .5);
+}
+.toast.is-on { opacity: 1; transform: translateY(0); }
+
+.hud {
+  position: absolute;
+  right: 40px;
+  bottom: 36px;
+  z-index: 60;
+  padding: 14px 20px;
+  border-radius: 12px;
+  font-size: 18px;
+  line-height: 28px;
+  background: rgba(20, 20, 24, .92);
+  color: rgba(244, 242, 238, .8);
+  opacity: 0;
+  transition: opacity .3s ease;
+}
+.hud.is-on { opacity: 1; }
+.hud b { color: #f2b84b; font-weight: 650; }
+.hud kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 6px;
+  margin-right: 4px;
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 15px;
+  text-align: center;
+  background: rgba(244, 242, 238, .15);
+}

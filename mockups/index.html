@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, height=1080">
+<title>Kino: mockups</title>
+<link rel="stylesheet" href="shared/kino.css">
+<style>
+  .bg { background: radial-gradient(ellipse 1500px 900px at 80% 0%, #241d14 0%, #0f0d0b 55%, #0a0a0c 85%); }
+  .intro { position: absolute; left: 112px; top: 110px; width: 1300px; }
+  .intro h1 { margin: 14px 0 0; font-size: 84px; line-height: 90px; font-weight: 800; letter-spacing: -2px; }
+  .intro p { margin: 20px 0 0; font-size: 26px; line-height: 38px; color: rgba(244, 242, 238, .65); }
+  .cols { position: absolute; left: 112px; top: 430px; white-space: nowrap; }
+  .col { display: inline-block; vertical-align: top; width: 400px; margin-right: 32px; white-space: normal; }
+  .col h2 { margin: 0 0 16px; font-size: 19px; font-weight: 650; letter-spacing: 1.6px; text-transform: uppercase; color: rgba(244, 242, 238, .5); }
+  .opt { position: relative; margin-bottom: 12px; padding: 18px 24px; border-radius: 14px; background: rgba(244, 242, 238, .06); transition: transform .2s ease; }
+  .opt b { display: block; font-size: 25px; font-weight: 650; }
+  .opt span { display: block; margin-top: 4px; font-size: 18px; color: rgba(244, 242, 238, .55); }
+  .opt.is-picked { background: rgba(242, 184, 75, .16); }
+  .opt.is-picked b:after { content: '  ✓'; color: #f2b84b; }
+  .opt.is-focus { transform: scale(1.04); }
+  .opt.is-focus .card-ring { opacity: 1; border-radius: 18px; }
+  .opt.go { background: #f4f2ee; color: #0a0a0c; }
+  .opt.go span { color: rgba(10, 10, 12, .6); }
+  .keys { position: absolute; left: 112px; bottom: 60px; font-size: 19px; color: rgba(244, 242, 238, .45); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="bg"></div>
+  <div class="intro">
+    <div class="kicker">Frame TV · AUG-1452</div>
+    <h1>Kino-hjemskjermen</h1>
+    <p>Mockups med dine egne data fra Stasera, GitHub og Vercel. Velg en kombinasjon med piltastene og trykk OK.
+      Inne i mockupen bytter tastene 1–9 variant, og H viser dem.</p>
+  </div>
+  <div class="cols" id="cols"></div>
+  <div class="keys">Mockupene er laget for 1920×1080 og skalerer til vinduet. Pil opp går til fanelinja, og pil bortover der bytter fane. Tilbake fra Hjem-fanen kommer hit.</div>
+</div>
+<script src="shared/kino.js"></script>
+<script>
+(function () {
+  var COLS = [
+    { key: 'hero', title: 'TV: helten', opts: [
+      { v: 'a', name: 'A · Lerret', note: 'Hele skjermen er bildet, og det følger fokus' },
+      { v: 'b', name: 'B · Plakat', note: 'Bilde til høyre, radene ruller som en liste' },
+      { v: 'c', name: 'C · Kinolerret', note: 'Et 2,39:1-lerret som lyser opp rommet' }] },
+    { key: 'rows', title: 'TV: radene', opts: [
+      { v: 'land', name: 'Bilder', note: 'Liggende kort med logo, som Apple TV' },
+      { v: 'poster', name: 'Plakater', note: 'Stående plakater, flere på skjermen' },
+      { v: 'mixed', name: 'Store kort', note: 'Store Ser på-kort med episodebilde' }] },
+    { key: 'mode', title: 'Modulene', opts: [
+      { v: 'stasera', name: 'Med Stasera', note: 'Stasera, YouTube og appene' },
+      { v: 'youtube', name: 'Uten Stasera', note: 'YouTube-abonnementene fyller plassen' },
+      { v: 'apps', name: 'Bare apper', note: 'Verken Stasera eller YouTube' }] },
+    { key: 'go', title: 'Åpne', opts: [
+      { v: 'home', name: 'Hjem', note: 'Der TV-en starter: litt av alt', go: 1 },
+      { v: 'tv', name: 'TV', note: 'Helten og radene, med valgene til venstre', go: 1 },
+      { v: 'stasera', name: 'Stasera', note: 'Statistikken', go: 1 },
+      { v: 'github', name: 'GitHub', note: 'Aktivitet, deploy og prosjekter', go: 1 }] }
+  ];
+  var P = K.params();
+  // C with big cards is the one picked after the first round (24.10.2026).
+  var pick = { hero: P.hero || 'c', rows: P.rows || 'mixed', mode: P.mode || 'stasera' };
+  var f = { c: 3, r: [0, 0, 0, 0] };
+  var el = document.getElementById('cols');
+
+  function render() {
+    el.innerHTML = COLS.map(function (col, c) {
+      return '<div class="col"><h2>' + col.title + '</h2>' + col.opts.map(function (o, r) {
+        var cls = 'opt' + (o.go ? ' go' : '') + (pick[col.key] === o.v ? ' is-picked' : '') + (f.c === c && f.r[c] === r ? ' is-focus' : '');
+        return '<div class="' + cls + '"><b>' + o.name + '</b><span>' + o.note + '</span><div class="card-ring"></div></div>';
+      }).join('') + '</div>';
+    }).join('');
+  }
+  K.onKey(function (k) {
+    var col = COLS[f.c];
+    if (k === 'left' && f.c > 0) f.c--;
+    else if (k === 'right' && f.c < COLS.length - 1) f.c++;
+    else if (k === 'up' && f.r[f.c] > 0) f.r[f.c]--;
+    else if (k === 'down' && f.r[f.c] < col.opts.length - 1) f.r[f.c]++;
+    else if (k === 'back') {
+      // On the TV, Back here leaves the mockup app.
+      if (window.tizen) try { tizen.application.getCurrentApplication().exit(); } catch (e) {}
+      return;
+    } else if (k === 'enter') {
+      var o = col.opts[f.r[f.c]];
+      if (o.go) { location.href = 'home.html' + K.query({ tab: o.v, hero: pick.hero, rows: pick.rows, mode: pick.mode }); return; }
+      pick[col.key] = o.v;
+    }
+    render();
+  });
+  // Coming back from a mockup keeps its choices.
+  COLS.forEach(function (col, c) {
+    col.opts.forEach(function (o, r) { if (pick[col.key] === o.v) f.r[c] = r; });
+  });
+  render();
+})();
+</script>
+</body>
+</html>

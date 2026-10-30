@@ -1,0 +1,128 @@
+# Frame TV in Home Assistant (AUG-1437): notifications to the TV, and what the TV reports.
+#
+# Put the file in /config/packages/ and have this in configuration.yaml (once):
+#   homeassistant:
+#     packages: !include_dir_named packages
+# Restart HA (or Developer tools → YAML → Check configuration first).
+#
+# To the TV: the event frametv_notify with {title, message, seconds}; Frame TV shows it at the top of the screen.
+# From the TV: the event frametv_state, {state: home | app | hidden, app, app_id, title, kind}, caught by
+# sensor.frame_tv below. Both need the token on the TV to belong to an admin user (docs/home-assistant.md).
+#
+# An example, from our home: change the entity ids to your own (the washer, the dryer, the living room's lights).
+# The names and messages are in Norwegian; the ids stay as they are, so dashboards keep working.
+
+template:
+  - triggers:
+      - trigger: event
+        event_type: frametv_state
+    sensor:
+      - name: Frame TV
+        unique_id: frame_tv_state
+        icon: mdi:television
+        # home: Frame TV is on screen; app: it has opened an app; hidden: something else (the Home button, the TV off).
+        state: "{{ trigger.event.data.state }}"
+        attributes:
+          app: "{{ trigger.event.data.app | default('') }}"
+          app_id: "{{ trigger.event.data.app_id | default('') }}"
+          title: "{{ trigger.event.data.title | default('') }}"
+          kind: "{{ trigger.event.data.kind | default('') }}"
+
+automation:
+  - id: frame_tv_vask_ferdig
+    alias: Frame TV - Vasken er ferdig
+    description: Sier fra på TV-en når vaskemaskinen er ferdig.
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.vaskemaskin
+        from: "on"
+        to: "off"
+    actions:
+      - event: frametv_notify
+        event_data:
+          title: Vasken er ferdig
+          message: Vaskemaskinen er ferdig.
+          seconds: 15
+
+  - id: frame_tv_tork_ferdig
+    alias: Frame TV - Tørketrommelen er ferdig
+    description: Sier fra på TV-en når tørketrommelen er ferdig.
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.torketrommel
+        from: "on"
+        to: "off"
+    actions:
+      - event: frametv_notify
+        event_data:
+          title: Tørketrommelen er ferdig
+          message: Tøyet er tørt.
+          seconds: 15
+
+  - id: frame_tv_pollen
+    alias: Frame TV - Pollenmelding
+    description: Pollenmeldingen på TV-en når den kommer.
+    triggers:
+      - trigger: state
+        entity_id: input_text.pollenmelding
+    conditions:
+      - condition: template
+        value_template: "{{ trigger.to_state.state | trim not in ['', 'unknown', 'unavailable'] }}"
+    actions:
+      - event: frametv_notify
+        event_data:
+          title: Pollen
+          message: "{{ trigger.to_state.state }}"
+          seconds: 20
+
+  - id: frame_tv_kino
+    alias: Frame TV - Dempet lys når en serie eller film starter
+    description: Når Frame TV åpner en serie eller film etter solnedgang, dempes lyset i stua.
+    triggers:
+      - trigger: event
+        event_type: frametv_state
+        event_data:
+          state: app
+    conditions:
+      - condition: template
+        value_template: "{{ trigger.event.data.kind in ['show', 'movie'] }}"
+      # Not the sun condition: "after sunset" ends at midnight.
+      - condition: state
+        entity_id: sun.sun
+        state: below_horizon
+    actions:
+      - action: script.turn_on
+        target:
+          entity_id: script.lys_stue_dimmer_min
+
+# Art Mode (AUG-1438): the Frame Art add-on is a device over MQTT (AUG-1493), and the API on port 8099 needs a key
+# (AUG-1496), so the scripts press its buttons. They keep their names, so dashboards and automations work as before.
+script:
+  frame_art_nytt_bilde:
+    alias: Kunstmodus - Nytt bilde
+    icon: mdi:image-refresh
+    sequence:
+      - action: button.press
+        target:
+          entity_id: button.frame_art_next
+  frame_art_kunstmodus:
+    alias: Kunstmodus - Slå på
+    icon: mdi:image-frame
+    sequence:
+      - action: button.press
+        target:
+          entity_id: button.frame_art_artmode
+  frame_art_morgenbildet:
+    alias: Kunstmodus - Morgenbildet
+    icon: mdi:weather-partly-cloudy
+    sequence:
+      - action: button.press
+        target:
+          entity_id: button.frame_art_morning_now
+  frame_art_kveldens_serie:
+    alias: Kunstmodus - Kveldens serie
+    icon: mdi:television-classic
+    sequence:
+      - action: button.press
+        target:
+          entity_id: button.frame_art_tonight_now

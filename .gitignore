@@ -1,0 +1,18 @@
+# Settings with your city and Stasera address stay on your machine
+config.properties
+
+# Build output
+out/
+*.wgt
+__pycache__/
+tools/.i18n-cache.json
+
+# Our task list, local (Linear has the tasks)
+TASKS.md
+
+# macOS
+.DS_Store
+
+# Samsung's Tizen CLI and the signing certificate stay local (tizen/make-certificate.sh, tizen/add-profile.sh)
+tizen-studio/
+tizen-studio-data/

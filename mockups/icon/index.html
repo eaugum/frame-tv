@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="nb"><head><meta charset="utf-8"><title>Frame TV: appikon (AUG-1480)</title>
+<style>
+  body { margin: 0; font-family: 'Helvetica Neue', Arial, sans-serif; background: #222; color: #F4F2EE; }
+  h1 { font-size: 22px; font-weight: 600; margin: 24px 32px 8px; }
+  .row { display: flex; align-items: flex-end; gap: 40px; padding: 28px 32px; }
+  .row.dark { background: #15161B; } .row.light { background: #E9E9EC; color: #0A0A0C; }
+  .opt { display: flex; align-items: flex-end; gap: 18px; }
+  .opt span { font-size: 15px; align-self: center; width: 90px; }
+  img { display: block; }
+</style></head>
+<body>
+<h1>Tre retninger for appikonet. Store, og i størrelsen fra appraden (96 og 48 px), på mørk og lys bakgrunn.</h1>
+<div class="row dark" id="dark"></div>
+<div class="row light" id="light"></div>
+<script>
+  var opts = [['a-bilde.svg', 'A: bildet i rammen'], ['b-play.svg', 'B: rammen som skjerm'], ['c-hjorner.svg', 'C: hjørnene']];
+  ['dark', 'light'].forEach(function (id) {
+    var row = document.getElementById(id);
+    opts.forEach(function (o) {
+      var d = document.createElement('div'); d.className = 'opt';
+      d.innerHTML = '<span>' + o[1] + '</span>' + [192, 96, 48].map(function (s) {
+        return '<img src="' + o[0] + '" width="' + s + '" height="' + s + '">';
+      }).join('');
+      row.appendChild(d);
+    });
+  });
+</script>
+</body></html>

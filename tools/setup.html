@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frame TV setup</title>
+<!-- Served by tools/setup.py on this Mac only, so modern JS and CSS are fine here (the ES5 rule is for web/). -->
+<style>
+  :root {
+    --bg: #111214; --card: #1b1c20; --line: #2a2c31; --text: #ecebe7; --muted: #9a9993; --accent: #f2c14e;
+    --bad: #ff7a6b; --good: #7fd18b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 24px 160px; }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lead { color: var(--muted); margin: 0 0 28px; }
+  .lead code { color: var(--text); }
+  .notice { border-left: 3px solid var(--accent); padding: 10px 16px; background: #1d1b14; border-radius: 6px; margin-bottom: 32px; color: #d9d4c4; }
+  .notice p { margin: 4px 0; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px 8px; margin-bottom: 20px; }
+  section h2 { margin: 0; font-size: 19px; }
+  section .about { color: var(--muted); margin: 2px 0 14px; }
+  section .note { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+  .field { border-top: 1px solid var(--line); padding: 14px 0; display: grid; grid-template-columns: 220px 1fr; gap: 6px 18px; }
+  .field label { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; padding-top: 8px; word-break: break-all; }
+  .field .help { grid-column: 2; color: var(--muted); font-size: 13px; white-space: pre-line; }
+  .field .help a { color: var(--muted); }
+  .control { display: flex; gap: 8px; align-items: center; }
+  input[type=text], input[type=password], select {
+    width: 100%; background: #0f1012; color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 10px; font: 14px ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  .segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .segmented button { border: 0; border-right: 1px solid var(--line); background: #0f1012; color: var(--muted); padding: 7px 14px; font: inherit; cursor: pointer; }
+  .segmented button:last-child { border-right: 0; }
+  .segmented button.on { background: var(--accent); color: #1b1606; font-weight: 600; }
+  .segmented button:disabled { opacity: 0.35; cursor: default; }
+  .needs { color: var(--muted); font-size: 13px; }
+  button.small { background: #26282d; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; font: inherit; cursor: pointer; white-space: nowrap; }
+  button.small:hover { border-color: var(--muted); }
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; background: rgba(17, 18, 20, 0.92); border-top: 1px solid var(--line); backdrop-filter: blur(10px); }
+  .bar .inner { max-width: 860px; margin: 0 auto; padding: 14px 24px; display: flex; gap: 12px; align-items: center; }
+  .bar .status { flex: 1; color: var(--muted); font-size: 14px; }
+  .bar .status.bad { color: var(--bad); }
+  .bar .status.good { color: var(--good); }
+  button.primary { background: var(--accent); color: #1b1606; border: 0; border-radius: 9px; padding: 10px 18px; font: 600 15px inherit; font-family: inherit; cursor: pointer; }
+  button.secondary { background: transparent; color: var(--text); border: 1px solid var(--line); border-radius: 9px; padding: 10px 18px; font: 600 15px inherit; font-family: inherit; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  pre.log { background: #0b0c0d; border: 1px solid var(--line); border-radius: 10px; padding: 14px; max-height: 340px; overflow: auto; font-size: 12.5px; white-space: pre-wrap; display: none; margin-top: 20px; }
+  .dirty { color: var(--accent); }
+  #fromtv { border-color: var(--accent); display: none; }
+  #fromtv table { width: 100%; border-collapse: collapse; margin: 6px 0 14px; font-size: 13px; }
+  #fromtv th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 10px 6px 0; }
+  #fromtv td { border-top: 1px solid var(--line); padding: 8px 10px 8px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; vertical-align: top; }
+  #fromtv td.was { color: var(--muted); }
+  #fromtv .actions { display: flex; gap: 10px; padding-bottom: 16px; }
+  @media (max-width: 640px) { .field { grid-template-columns: 1fr; } .field .help { grid-column: 1; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Frame TV setup</h1>
+  <p class="lead">Every setting in <code id="path">config.properties</code>, explained. Save, then build and install
+    to send them to the TV. Everything is optional: an empty field uses the default.</p>
+  <div class="notice">
+    <p>What you change on the TV (the gear) wins over this file, until you change the same setting here: then the
+      file wins once. Whatever was changed last applies.</p>
+    <p>The TV forgets its own changes if the app is uninstalled. This file is the backup: "Upload config" in the
+      TV's gear sends them here while this page runs, and you accept them below.</p>
+  </div>
+  <section id="fromtv">
+    <h2>From the TV</h2>
+    <p class="about">What the TV sent that isn't in the file yet. Accepting writes it into the file.</p>
+    <table><thead><tr><th>Key</th><th>In the file</th><th>From the TV</th></tr></thead><tbody></tbody></table>
+    <div class="actions">
+      <button class="primary" id="accept" type="button">Accept</button>
+      <button class="secondary" id="discard" type="button">Discard</button>
+    </div>
+  </section>
+  <div id="sections"></div>
+  <pre class="log" id="log"></pre>
+</main>
+<div class="bar"><div class="inner">
+  <div class="status" id="status">Loading…</div>
+  <button class="secondary" id="save">Save</button>
+  <button class="primary" id="install">Save, build and install</button>
+</div></div>
+
+<script>
+const KEY = '{{KEY}}';
+const $ = (id) => document.getElementById(id);
+const values = {};
+let saved = {}, busy = false;
+
+async function api(path, body) {
+  const r = await fetch(path, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: {'X-Setup': KEY, 'Content-Type': 'application/json'},
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const json = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((json.problems || []).join('\n') || json.error || 'HTTP ' + r.status);
+  return json;
+}
+
+function status(text, kind) {
+  const s = $('status');
+  s.textContent = text;
+  s.className = 'status' + (kind ? ' ' + kind : '');
+}
+
+function dirty() {
+  return Object.keys(values).some((k) => values[k] !== (saved[k] || ''));
+}
+
+function changed() {
+  if (!busy) status(dirty() ? 'Unsaved changes.' : 'Saved.', dirty() ? '' : 'good');
+}
+
+function el(tag, cls, parent, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+/** Links in the help: bare domains and URLs. */
+function help(node, text) {
+  const parts = text.split(/(https?:\/\/[^\s),]+|\b[a-z0-9.-]+\.(?:com|app|org)(?:\/[^\s),]*)?)/g);
+  parts.forEach((p, i) => {
+    if (i % 2 && !p.includes('<')) {
+      const a = el('a', '', node, p);
+      a.href = p.startsWith('http') ? p : 'https://' + p;
+      a.target = '_blank';
+    } else node.appendChild(document.createTextNode(p));
+  });
+}
+
+const switches = [];   // each module's switch: {key, needs, render}
+
+/** On or Off (empty counts as Off); On only when the fields the module needs are filled in. */
+function onOff(parent, key, needs) {
+  const box = el('div', 'segmented', parent);
+  const note = el('span', 'needs', parent);
+  const on = el('button', '', box, 'On'), off = el('button', '', box, 'Off');
+  on.type = off.type = 'button';
+  const missing = () => needs.filter((k) => !values[k]);
+  const render = () => {
+    if (values[key] === 'true' && missing().length) values[key] = 'false';   // a needed field was emptied
+    on.disabled = missing().length > 0;
+    on.classList.toggle('on', values[key] === 'true');
+    off.classList.toggle('on', values[key] !== 'true');
+    note.textContent = missing().length ? 'Needs ' + missing().join(' and ') : '';
+  };
+  on.onclick = () => { values[key] = 'true'; render(); changed(); };
+  off.onclick = () => { values[key] = 'false'; render(); changed(); };
+  switches.push({render});
+  render();
+}
+
+function input(parent, key, secret) {
+  const i = el('input', '', parent);
+  i.type = secret ? 'password' : 'text';
+  i.value = values[key];
+  i.spellcheck = false;
+  i.autocomplete = 'off';
+  i.oninput = () => { values[key] = i.value; switches.forEach((s) => s.render()); changed(); };
+  if (secret) {
+    const show = el('button', 'small', parent, 'Show');
+    show.type = 'button';
+    show.onclick = () => {
+      i.type = i.type === 'password' ? 'text' : 'password';
+      show.textContent = i.type === 'password' ? 'Show' : 'Hide';
+    };
+  }
+  return i;
+}
+
+function render(config) {
+  switches.length = 0;
+  $('path').textContent = config.path.split('/').pop();
+  const root = $('sections');
+  root.innerHTML = '';
+  for (const s of config.sections) for (const k of s.keys) values[k.key] = k.value;   // the switches look ahead
+  for (const s of config.sections) {
+    const sec = el('section', '', root);
+    const [title, ...rest] = s.title.split(': ');
+    el('h2', '', sec, title);
+    if (rest.length) el('p', 'about', sec, rest.join(': ').replace(/^./, (c) => c.toUpperCase()));
+    if (s.note) el('p', 'note', sec, s.note);
+    for (const k of s.keys) {
+      const row = el('div', 'field', sec);
+      el('label', '', row, k.key);
+      const control = el('div', 'control', row);
+      if (k.kind === 'switch') onOff(control, k.key, k.needs);
+      else if (k.kind === 'choice') {
+        const sel = el('select', '', control);
+        const choices = k.choices.includes(k.value) ? k.choices : k.choices.concat([k.value]);
+        for (const c of choices) el('option', '', sel, c || '—').value = c;
+        sel.value = k.value;
+        sel.onchange = () => { values[k.key] = sel.value; changed(); };
+      } else {
+        const i = input(control, k.key, k.kind === 'secret');
+        if (k.example && !k.value) i.placeholder = k.example;
+        if (k.key === 'spotify_refresh_token') {
+          const b = el('button', 'small', control, 'Sign in to Spotify');
+          b.type = 'button';
+          b.onclick = () => spotify(i);
+        }
+      }
+      if (k.help) help(el('div', 'help', row), k.help);
+    }
+  }
+}
+
+async function load() {
+  const config = await api('/api/config');
+  render(config);
+  saved = Object.assign({}, values);
+  if (config.problems.length) status(config.problems.join(' · '), 'bad');
+  else status(config.exists ? 'Loaded.' : 'No config.properties yet: saving makes one.');
+}
+
+async function save() {
+  try {
+    await api('/api/config', {values});
+    saved = Object.assign({}, values);
+    status('Saved.', 'good');
+    return true;
+  } catch (e) {
+    status(e.message, 'bad');
+    return false;
+  }
+}
+
+async function spotify(field) {
+  if (!values.spotify_client_id) { status('Fill in spotify_client_id first.', 'bad'); return; }
+  if (!(await save())) return;
+  try {
+    const {url} = await api('/api/spotify/start', {});
+    window.open(url, '_blank');
+    status('Signing in to Spotify in the new tab…');
+    const {token} = await api('/api/spotify/wait', {});
+    values.spotify_refresh_token = saved.spotify_refresh_token = field.value = token;
+    switches.forEach((s) => s.render());
+    status('Signed in to Spotify: the token is saved.', 'good');
+  } catch (e) {
+    status(e.message, 'bad');
+  }
+}
+
+async function install() {
+  if (!(await save())) return;
+  busy = true;
+  $('save').disabled = $('install').disabled = true;
+  const log = $('log');
+  log.style.display = 'block';
+  log.textContent = '';
+  status('Building and installing…');
+  let ok = false;
+  try {
+    const r = await fetch('/api/install', {method: 'POST', headers: {'X-Setup': KEY, 'Content-Type': 'application/json'}, body: '{}'});
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'HTTP ' + r.status);
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let text = '';
+    for (;;) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      text += dec.decode(value, {stream: true});
+      log.textContent = text.replace(/\n@@(DONE|FAILED)\n$/, '');
+      log.scrollTop = log.scrollHeight;
+    }
+    ok = /@@DONE\n$/.test(text);
+    status(ok ? 'Installed on the TV.' : 'It didn\'t finish: see the output.', ok ? 'good' : 'bad');
+  } catch (e) {
+    status(e.message, 'bad');
+  }
+  busy = false;
+  $('save').disabled = $('install').disabled = false;
+}
+
+/** A secret as dots, with Show; anything else as it is. */
+function cell(row, value, secret, cls) {
+  const td = el('td', cls || '', row);
+  if (!value) { td.textContent = '—'; return; }
+  if (!secret) { td.textContent = value; return; }
+  const text = el('span', '', td, '••••••••');
+  const b = el('button', 'small', td, 'Show');
+  b.type = 'button';
+  b.style.marginLeft = '8px';
+  b.onclick = () => {
+    const shown = b.textContent === 'Hide';
+    text.textContent = shown ? '••••••••' : value;
+    b.textContent = shown ? 'Show' : 'Hide';
+  };
+}
+
+let fromTvAt = 0;
+
+/** Asks every few seconds whether the TV has sent something. */
+async function fromTv() {
+  try {
+    const got = await api('/api/from-tv');
+    const box = $('fromtv');
+    if (!got.at || !got.changes.length) {
+      box.style.display = 'none';
+      if (got.at) await api('/api/from-tv/discard', {});   // nothing new: the file has it all
+      if (got.at && got.at !== fromTvAt) status('The TV sent its settings: the file has them all already.', 'good');
+      fromTvAt = got.at || 0;
+      return;
+    }
+    if (got.at === fromTvAt) return;
+    fromTvAt = got.at;
+    const body = box.querySelector('tbody');
+    body.innerHTML = '';
+    for (const c of got.changes) {
+      const row = el('tr', '', body);
+      el('td', '', row, c.key);
+      cell(row, c.file, c.secret, 'was');
+      cell(row, c.tv, c.secret);
+    }
+    box.style.display = 'block';
+    box.scrollIntoView({behavior: 'smooth', block: 'start'});
+    status('The TV sent its settings: accept them or discard them.');
+  } catch (e) {}
+}
+
+async function acceptFromTv() {
+  if (dirty() && !confirm('Accepting reloads the page from the file, and your unsaved changes here are lost.')) return;
+  try {
+    await api('/api/from-tv/accept', {});
+    $('fromtv').style.display = 'none';
+    fromTvAt = 0;
+    await load();
+    status('Saved what the TV sent into the file.', 'good');
+  } catch (e) {
+    status(e.message, 'bad');
+  }
+}
+
+$('accept').onclick = acceptFromTv;
+$('discard').onclick = async () => {
+  await api('/api/from-tv/discard', {}).catch(() => {});
+  $('fromtv').style.display = 'none';
+  fromTvAt = 0;
+  status('Discarded what the TV sent.');
+};
+setInterval(fromTv, 3000);
+
+$('save').onclick = save;
+$('install').onclick = install;
+window.addEventListener('beforeunload', (e) => { if (dirty()) e.preventDefault(); });
+load().catch((e) => status(e.message, 'bad'));
+</script>
+</body>
+</html>

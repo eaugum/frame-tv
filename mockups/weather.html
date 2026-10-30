@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, height=1080">
+<title>Været på Hjem (AUG-1472)</title>
+<style>
+  @font-face { font-family: 'Inter'; src: url(shared/InterVariable.ttf); font-weight: 100 900; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { font-family: 'Inter', -apple-system, sans-serif; color: #F4F2EE; }
+  #stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: #0A0A0C; overflow: hidden;
+    -webkit-transform-origin: 0 0; transform-origin: 0 0; }
+  #amb { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
+    background: radial-gradient(ellipse at 30% 40%, rgba(70, 90, 120, 0.45), rgba(10, 10, 12, 0) 60%); }
+
+  #top { position: absolute; left: 112px; right: 112px; top: 52px; height: 52px; }
+  .tab { display: inline-block; position: relative; height: 32px; padding: 10px 18px; margin-right: 4px; border-radius: 26px;
+    font-size: 24px; font-weight: 600; line-height: 32px; vertical-align: top; color: rgba(244, 242, 238, 0.5); }
+  .tab.current { color: #F4F2EE; }
+  .tab.current:after { content: ''; position: absolute; left: 18px; right: 18px; bottom: 2px; height: 3px; border-radius: 2px; background: #F4F2EE; }
+  .tab.icon { width: 28px; padding: 10px 12px; text-align: center; font-size: 26px; }
+  .tab.first-icon { margin-left: 10px; }
+  #clock { position: absolute; right: 0; top: 6px; font-size: 30px; font-weight: 500; color: rgba(244, 242, 238, 0.85); white-space: nowrap; }
+  #clock small { font-size: 22px; font-weight: 500; color: rgba(244, 242, 238, 0.5); margin-right: 18px; }
+
+  .greet { position: absolute; left: 112px; top: 140px; white-space: nowrap; }
+  .greet h1 { margin: 0; font-size: 64px; line-height: 70px; font-weight: 750; letter-spacing: -1.5px; }
+  .greet .sub { margin-top: 8px; font-size: 24px; color: rgba(244, 242, 238, 0.6); }
+  .greet .sub b { font-weight: 500; color: rgba(244, 242, 238, 0.8); }
+
+  .tile { position: absolute; border-radius: 22px; background: rgba(244, 242, 238, 0.07); }
+  .tile .label { position: absolute; left: 32px; top: 28px; font-size: 20px; font-weight: 700; letter-spacing: 2.4px;
+    text-transform: uppercase; color: #F2B84B; }
+  .tile .t { position: absolute; left: 32px; bottom: 32px; font-size: 40px; font-weight: 750; }
+  .big { background: linear-gradient(135deg, #2B3A52, #12161F); }
+
+  #pick { position: absolute; left: 112px; bottom: 36px; font-size: 22px; color: rgba(244, 242, 238, 0.55); }
+  #pick b { color: #F4F2EE; }
+  #note { position: absolute; right: 112px; bottom: 36px; font-size: 22px; color: rgba(244, 242, 238, 0.55); width: 900px; text-align: right; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="amb"></div>
+  <div id="top">
+    <span class="tab current">Hjem</span><span class="tab">TV</span><span class="tab">Stasera</span><span class="tab">GitHub</span><span
+      class="tab icon first-icon">&#9638;</span><span class="tab icon">&#9881;</span>
+    <div id="clock"></div>
+  </div>
+  <div class="greet"><h1>God dag</h1><div class="sub" id="sub"></div></div>
+  <div class="tile big" style="left: 112px; top: 300px; width: 1040px; height: 440px;"><div class="label">Fortsett å se</div><div class="t">Severance</div></div>
+  <div class="tile" style="left: 1176px; top: 300px; width: 632px; height: 208px;"><div class="label">Nye episoder</div></div>
+  <div class="tile" style="left: 1176px; top: 532px; width: 632px; height: 208px;"><div class="label">Begynn på denne?</div></div>
+  <div class="tile" style="left: 112px; top: 772px; width: 406px; height: 210px;"><div class="label">Stasera</div></div>
+  <div class="tile" style="left: 542px; top: 772px; width: 406px; height: 210px;"><div class="label">GitHub</div></div>
+  <div class="tile" style="left: 972px; top: 772px; width: 406px; height: 210px;"><div class="label">Venner</div></div>
+  <div class="tile" style="left: 1402px; top: 772px; width: 406px; height: 210px;"><div class="label">Netflix</div></div>
+  <div id="pick"></div>
+  <div id="note"></div>
+</div>
+<script>
+(function () {
+  'use strict';
+  var OPTIONS = [
+    {name: 'A · Været bare ved klokka', clock: 'Oslo  9°', sub: 'Søndag 25. oktober',
+      note: 'Ett sted, likt på alle faner. Hilsenen er bare dato; resten av dagen står på værflisen når den får plass.'},
+    {name: 'B · Nå ved klokka, resten av dagen under hilsenen', clock: 'Oslo  9°',
+      sub: 'Søndag 25. oktober  ·  <b>Duskregn, H: 11°  L: 6°  ·  Solnedgang 17:02</b>',
+      note: 'To jobber: temperaturen nå i fanelinja, dagens utsikter på Hjem. Gjentar værflisen når den er der.'}
+  ];
+  var at = 0;
+
+  function draw() {
+    var o = OPTIONS[at];
+    document.getElementById('clock').innerHTML = '<small>' + o.clock + '</small>14:32';
+    document.getElementById('sub').innerHTML = o.sub;
+    document.getElementById('note').textContent = o.note;
+    document.getElementById('pick').innerHTML = '&larr; &rarr;  <b>' + o.name + '</b>  (' + (at + 1) + ' / ' + OPTIONS.length + ')';
+  }
+
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080), st = document.getElementById('stage');
+    st.style.webkitTransform = st.style.transform = 'scale(' + s + ')';
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.keyCode === 37 || e.keyCode === 39) { at = (at + (e.keyCode === 39 ? 1 : OPTIONS.length - 1)) % OPTIONS.length; draw(); }
+  });
+  document.addEventListener('click', function () { at = (at + 1) % OPTIONS.length; draw(); });
+  window.addEventListener('resize', fit);
+  fit();
+  draw();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, height=1080">
+<title>Kino: Frame TV</title>
+<link rel="stylesheet" href="shared/kino.css">
+<link rel="stylesheet" href="shared/panes.css">
+<style>
+  /* Hero layer: fixed in A and C, scrolls with the rows in B. */
+  #heroLayer { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transition: transform .45s cubic-bezier(.2, .8, .2, 1); }
+  .hero-frame { position: absolute; overflow: hidden; transition: transform .45s cubic-bezier(.2, .8, .2, 1); }
+  .hero-frame .bg-layer { width: 100%; height: 100%; }
+  .hero-shade { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+  .hero-content { position: absolute; transition: transform .45s cubic-bezier(.2, .8, .2, 1); }
+  .hc { transition: opacity .22s ease; }
+  .hc.is-swapping { opacity: 0; }
+  .hc .kicker { margin-bottom: 18px; }
+  .hc .meta { margin-top: 26px; }
+  .hc .overview { margin-top: 18px; }
+  .hc .actions { margin-top: 36px; }
+  .hc .prog-line { margin-top: 22px; white-space: nowrap; }
+  .in-rows .hc .overview { -webkit-line-clamp: 2; }
+  .hc .prog-line .progress { display: inline-block; width: 220px; vertical-align: middle; }
+  .hc .prog-line span { margin-left: 16px; font-size: 20px; color: rgba(244, 242, 238, .55); vertical-align: middle; }
+  .hc .yt-title { font-size: 64px; line-height: 72px; font-weight: 800; letter-spacing: -1.5px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  #dots { position: absolute; transition: opacity .3s ease; }
+  .in-rows #dots, .in-rows .hc .actions { opacity: 0; }
+  .hc .actions { transition: opacity .25s ease; }
+
+  #rows { position: absolute; left: 0; top: 0; width: 1920px; transition: transform .45s cubic-bezier(.2, .8, .2, 1); }
+  #ambient { position: absolute; left: -160px; top: -160px; width: 2240px; height: 1400px; opacity: 0; transition: opacity .6s ease; }
+  #ambient .bg-layer { width: 100%; height: 100%; }
+
+  /* A · Lerret: the whole screen is the picture, and it follows focus. */
+  .hero-a .hero-frame { left: 0; top: 0; width: 1920px; height: 1080px; }
+  .hero-a .hero-shade {
+    background:
+      linear-gradient(90deg, rgba(10, 10, 12, .94) 0%, rgba(10, 10, 12, .72) 32%, rgba(10, 10, 12, .1) 62%, rgba(10, 10, 12, 0) 75%),
+      linear-gradient(0deg, #0a0a0c 0%, rgba(10, 10, 12, .88) 20%, rgba(10, 10, 12, 0) 48%);
+  }
+  .hero-a .hero-content { left: 112px; bottom: 284px; width: 860px; }
+  .hero-a #dots { left: 112px; top: 812px; }
+  .hero-a #rows { padding-top: 868px; }
+  .hero-a.in-rows .hero-content { transform: translateY(-206px); }
+  .in-rows .hc .actions { display: none; }
+  .hero-a.in-rows .hero-shade {
+    background:
+      linear-gradient(90deg, rgba(10, 10, 12, .96) 0%, rgba(10, 10, 12, .8) 34%, rgba(10, 10, 12, .2) 64%, rgba(10, 10, 12, .1) 100%),
+      linear-gradient(0deg, #0a0a0c 0%, rgba(10, 10, 12, .92) 40%, rgba(10, 10, 12, 0) 62%);
+  }
+
+  /* B · Plakat: a billboard on the right, the rows scroll up like a list. */
+  .hero-b .hero-frame { right: 0; top: 0; width: 1360px; height: 765px; }
+  .hero-b .hero-shade {
+    background:
+      linear-gradient(90deg, #0a0a0c 0%, rgba(10, 10, 12, .8) 18%, rgba(10, 10, 12, 0) 52%),
+      linear-gradient(0deg, #0a0a0c 0%, rgba(10, 10, 12, 0) 36%);
+  }
+  .hero-b .hero-content { left: 112px; bottom: 396px; width: 780px; }
+    .hero-b .logo-wrap img { max-height: 160px; max-width: 560px; }
+  .hero-b .hc .overview { -webkit-line-clamp: 2; }
+  .hero-b #dots { left: 112px; top: 706px; }
+  .hero-b #rows { padding-top: 760px; }
+  .hero-b.in-rows .top, .hero-c.in-rows .top { opacity: 0; }
+  .hero-b .hc { transition: opacity .3s ease; }
+  .hero-b.in-rows .hero-content { opacity: 0; transition: opacity .3s ease; }
+
+  /* C · Kinolerret: a letterboxed 2.39:1 screen with the room lit by it. */
+  .tab-tv.hero-c #ambient, .tab-home #ambient { opacity: .3; }
+  .hero-c .hero-frame { -webkit-transform: translateZ(0); left: 112px; top: 124px; width: 1696px; height: 710px; border-radius: 22px; box-shadow: 0 40px 90px rgba(0, 0, 0, .6); }
+  .hero-c .hero-shade {
+    background:
+      linear-gradient(90deg, rgba(8, 8, 10, .88) 0%, rgba(8, 8, 10, .55) 34%, rgba(8, 8, 10, 0) 62%),
+      linear-gradient(0deg, rgba(8, 8, 10, .85) 0%, rgba(8, 8, 10, 0) 45%);
+  }
+  .hero-c .hero-content { left: 176px; bottom: 300px; width: 820px; }
+    .hero-c .logo-wrap img { max-height: 150px; max-width: 540px; }
+  .hero-c .logo-wrap .title-text { font-size: 76px; line-height: 80px; }
+  .hero-c .hc .overview { -webkit-line-clamp: 2; width: 760px; }
+  .hero-c #dots { left: 112px; top: 862px; }
+  .hero-c #rows { padding-top: 918px; }
+  .hero-c.in-rows .hero-frame, .hero-c.in-rows .hero-content { transform: translateY(-300px); }
+
+  /* Without Stasera or YouTube: a calm room with the apps. */
+  .mode-apps #heroLayer, .mode-apps #dots { display: none; }
+  .calm { display: none; position: absolute; left: 112px; top: 190px; }
+  .mode-apps .calm { display: block; }
+  .calm .big-clock { font-size: 168px; line-height: 170px; font-weight: 250; letter-spacing: -4px; font-variant-numeric: tabular-nums; }
+  .calm .date { margin-top: 10px; font-size: 34px; font-weight: 500; color: rgba(244, 242, 238, .7); }
+  .calm .weather { margin-top: 8px; font-size: 28px; color: rgba(244, 242, 238, .5); }
+  .mode-apps #rows { padding-top: 560px; }
+  .mode-apps .row { margin-bottom: 36px; }
+  .row h2:empty { display: none; }
+  .tab-tv.mode-apps .bg { background: radial-gradient(ellipse 1400px 900px at 78% 20%, #2a2119 0%, #141210 45%, #0a0a0c 80%); }
+  .mode-apps .card--app { width: 304px; height: 171px; }
+  .mode-apps .app-word { font-size: 40px; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="bg">
+    <div id="ambient"><div class="bg-layer" id="amb0"></div><div class="bg-layer" id="amb1"></div></div>
+  </div>
+ <div class="pane" id="pane-home"></div>
+ <div class="pane" id="pane-tv">
+  <div class="calm"><div class="big-clock" id="bigClock"></div><div class="date" id="bigDate"></div><div class="weather">Oslo&nbsp;&nbsp;7°&nbsp;&nbsp;Skyet, opphold i natt</div></div>
+  <div id="heroLayer">
+    <div class="hero-frame"><div class="bg-layer" id="h0"></div><div class="bg-layer" id="h1"></div><div class="hero-shade"></div></div>
+    <div class="hero-content"><div class="hc" id="hc"></div></div>
+    <div id="dots" class="dots"></div>
+  </div>
+  <div id="rows"></div>
+ </div>
+ <div class="pane" id="pane-stasera"></div>
+ <div class="pane" id="pane-github"></div>
+ <div class="pane" id="pane-ha"></div>
+  <div class="top">
+    <div class="tabs" id="tabs"></div>
+    <div class="clock" id="clock"></div>
+  </div>
+</div>
+<script src="data/snapshot.js"></script>
+<script src="data/deploys.js"></script>
+<script src="shared/kino.js"></script>
+<script src="shared/panes.js"></script>
+<script>
+(function () {
+  var D = SNAPSHOT;
+  var P = K.params();
+  var NOW = new Date(D.generatedAt);
+  var TODAY = NOW.getFullYear() + '-' + ('0' + (NOW.getMonth() + 1)).slice(-2) + '-' + ('0' + NOW.getDate()).slice(-2);
+  var V = { hero: P.hero || 'c', rows: P.rows || 'mixed', mode: P.mode || 'stasera' };
+  // The tab bar: Hjem is where the TV starts. Up only reaches the bar; left and right change tab.
+  var TABS = [['home', 'Hjem'], ['tv', 'TV'], ['stasera', 'Stasera'], ['github', 'GitHub'], ['ha', 'Home Assistant']];
+  var NAV = { tab: P.tab || 'home', area: 'content' };
+  var HERO_NAMES = { a: 'A · Lerret', b: 'B · Plakat', c: 'C · Kinolerret' };
+  var ROW_NAMES = { land: 'Bilder', poster: 'Plakater', mixed: 'Store kort' };
+  var MODE_NAMES = { stasera: 'Stasera + YouTube', youtube: 'Uten Stasera', apps: 'Bare apper' };
+
+  function inApps(c) { return c.app && D.apps.indexOf(c.app) >= 0; }
+  function daysSince(date) { return Math.round((K.parseDate(TODAY) - K.parseDate(date)) / 86400000); }
+  function isNew(c) { return c.kind === 'show' && c.airDate && daysSince(c.airDate) <= 14 && daysSince(c.airDate) >= 0; }
+
+  // ── Model ──────────────────────────────────────────────────
+  function showMeta(c, withApp) {
+    var m = [];
+    if (c.watched) {
+      m.push(K.ep(c) + (c.episodeName && !/^Episode \d+$/.test(c.episodeName) ? ' «' + K.esc(c.episodeName) + '»' : ''));
+    } else {
+      if (c.year) m.push(c.year);
+      if (c.genres && c.genres.length) m.push(K.genre(c.genres[0]));
+      if (c.kind === 'movie' && c.runtime) m.push(K.minutes(c.runtime));
+    }
+    if (withApp && c.app) m.push(c.app);
+    return m;
+  }
+
+  function heroFromCard(c, kicker) {
+    var h = {
+      kicker: kicker, title: c.title, logo: c.logo, img: c.hero || c.backdrop, ambient: c.backdrop,
+      meta: showMeta(c, true), overview: c.watched ? (c.episodeOverview || c.overview) : c.overview, card: c
+    };
+    if (c.watched) {
+      h.progress = c.watched / c.total;
+      h.progressText = K.plural(c.remaining, 'episode', 'episoder') + ' igjen';
+      h.button = (c.watched && !isNew(c) ? 'Fortsett' : 'Se') + ' · ' + K.ep(c);
+    } else if (c.kind === 'show') {
+      h.button = 'Begynn · S1 E1';
+    } else {
+      h.button = 'Spill av';
+    }
+    h.app = c.app;
+    return h;
+  }
+
+  function heroItems() {
+    if (V.mode === 'youtube') {
+      var seen = {}, out = [];
+      D.youtube.forEach(function (v) {
+        if (seen[v.channel] || out.length >= 6) return;
+        seen[v.channel] = 1;
+        out.push(heroFromVideo(v));
+      });
+      return out;
+    }
+    var watching = D.watching.filter(function (c) { return inApps(c) && c.hero; });
+    var fresh = watching.filter(isNew).sort(function (a, b) { return a.airDate < b.airDate ? 1 : -1; });
+    var cont = watching.filter(function (c) { return !isNew(c); });
+    var want = D.wantToStart.filter(function (c) { return c.kind === 'show' && inApps(c) && c.hero && c.logo; });
+    var out = [], i;
+    for (i = 0; i < 2; i++) {
+      if (cont[i]) out.push(heroFromCard(cont[i], 'Fortsett å se'));
+      if (fresh[i]) out.push(heroFromCard(fresh[i], 'Ny episode <span class="dim">· ' + K.day(fresh[i].airDate, NOW) + '</span>'));
+      if (want[i]) out.push(heroFromCard(want[i], 'Fra Vil begynne på'));
+    }
+    return out;
+  }
+
+  function heroFromVideo(v) {
+    return {
+      kicker: 'Ny video <span class="dim">· ' + K.esc(v.channel) + '</span>', ytTitle: v.title, img: v.hero,
+      ambient: v.thumb, meta: [K.ago(Date.parse(v.published), NOW.getTime()), K.views(v.views)], button: 'Spill av',
+      app: 'YouTube'
+    };
+  }
+
+  function card(c, style, rowKind) {
+    var img = style === 'poster' ? c.poster : (style === 'big' && c.still ? c.still : c.backdrop);
+    var html = '<div class="card card--' + style + '"><div class="card-img" style="background-image:url(' + img + ')"></div>';
+    if (style !== 'poster') {
+      html += '<div class="card-shade"></div>';
+      if (style === 'big') {
+        html += c.logo ? '<img class="card-logo" src="' + c.logo + '">' : '';
+        html += '<div class="big-text"><b>' + (c.logo ? '' : K.esc(c.title)) + '</b><span>' + K.ep(c) +
+          (c.episodeName && !/^Episode \d+$/.test(c.episodeName) ? ' · ' + K.esc(c.episodeName) : '') + '</span></div>';
+      } else {
+        html += c.logo ? '<img class="card-logo" src="' + c.logo + '">' : '<div class="card-title">' + K.esc(c.title) + '</div>';
+      }
+    }
+    if (rowKind === 'watching') html += '<div class="progress"><i style="transform:scaleX(' + (c.watched / c.total).toFixed(3) + ')"></i></div>';
+    if (rowKind === 'watching' && isNew(c)) html += '<div class="badge">Ny</div>';
+    html += '<div class="card-ring"></div></div>';
+    var sub;
+    if (rowKind === 'watching') sub = K.ep(c) + ' · ' + (inApps(c) ? c.app : c.app || '');
+    else sub = showMeta(c, true).join(' · ');
+    if (style === 'big') return html + '<div class="cap"><span>' + K.plural(c.remaining, 'episode', 'episoder') + ' igjen · ' + K.esc(c.app || '') + '</span></div>';
+    return html + '<div class="cap"><b>' + K.esc(c.title) + '</b><span>' + K.esc(sub) + '</span></div>';
+  }
+
+  function initials(name) {
+    var p = name.split(' ');
+    return (p[0][0] + (p[1] ? p[1][0] : '')).toUpperCase();
+  }
+  function friendText(f) {
+    if (f.kind === 'watched-together') return 'så den sammen med deg';
+    if (f.kind === 'rating-set') return 'ga en episode ' + (f.detail || '').replace('episode ', '');
+    if (f.kind === 'episode-watch') return f.count > 1 ? 'så ' + f.count + ' episoder' : 'så en episode';
+    return 'så filmen';
+  }
+  function friendCard(f) {
+    var html = '<div class="card card--friend"><div class="card-img" style="background-image:url(' + f.backdrop + ')"></div>' +
+      '<div class="card-shade"></div><span class="avatar">' + initials(f.friend) + '</span>' +
+      (f.together ? '<span class="avatar">EA</span>' : '') +
+      (f.kind === 'rating-set' ? '<div class="stars">★★★★★</div>' : '') +
+      '<div class="card-title">' + K.esc(f.title) + '</div><div class="card-ring"></div></div>';
+    return html + '<div class="cap"><b>' + K.esc(f.friend) + ' ' + friendText(f) + '</b><span>' +
+      K.ago(f.at, NOW.getTime()) + '</span></div>';
+  }
+  function ytCard(v) {
+    return '<div class="card card--yt"><div class="card-img" style="background-image:url(' + v.thumb + ')"></div>' +
+      '<div class="yt-chan">' + K.esc(v.channel) + '</div><div class="card-ring"></div></div>' +
+      '<div class="cap"><b>' + K.esc(v.title) + '</b><span>' + K.ago(Date.parse(v.published), NOW.getTime()) + ' · ' +
+      K.views(v.views) + '</span></div>';
+  }
+
+  function buildRows() {
+    var rows = [];
+    var feed = D.friends.filter(function (f, i, all) {
+      // One card per title and kind of event; the feed repeats the solo watch after a joint one.
+      for (var j = 0; j < i; j++) if (all[j].title === f.title && (all[j].kind === f.kind || all[j].together)) return false;
+      return true;
+    });
+    if (V.mode === 'stasera') {
+      var wStyle = V.rows === 'poster' ? 'poster' : V.rows === 'mixed' ? 'big' : 'land';
+      var tStyle = V.rows === 'land' ? 'land' : 'poster';
+      rows.push({ id: 'watching', title: 'Ser på', count: D.watching.length, items: D.watching.map(function (c) {
+        return { html: card(c, wStyle, 'watching'), hero: heroFromCard(c, 'Ser på'), action: 'Åpner ' + K.esc(c.title) + ' ' + K.ep(c) + (c.app ? ' i ' + c.app : '') };
+      }) });
+      rows.push({ id: 'want', title: 'Vil begynne på', count: D.wantToStart.length, items: D.wantToStart.map(function (c) {
+        return { html: card(c, tStyle, 'want'), hero: heroFromCard(c, 'Vil begynne på'), action: 'Åpner ' + K.esc(c.title) + (c.app ? ' i ' + c.app : '') };
+      }) });
+      rows.push({ id: 'friends', title: 'Venner', tag: 'bare testkontoen din ennå', items: feed.map(function (f) {
+        return { html: friendCard(f), hero: {
+          kicker: 'Venner', title: f.title, img: f.backdrop, ambient: f.backdrop,
+          meta: [K.esc(f.friend) + ' ' + friendText(f), K.ago(f.at, NOW.getTime())]
+        }, action: 'Viser ' + K.esc(f.title) };
+      }) });
+    }
+    if (V.mode !== 'apps') {
+      rows.push({ id: 'youtube', title: V.mode === 'youtube' ? 'Nytt fra abonnementene' : 'YouTube-abonnementer', tag: 'eksempelkanaler', items: D.youtube.map(function (v) {
+        var h = heroFromVideo(v);
+        h.kicker = K.esc(v.channel);
+        return { html: ytCard(v), hero: h, action: 'Åpner videoen i YouTube' };
+      }) });
+    }
+    function appItem(a) {
+      return { html: K.appTile(a), hero: { kicker: 'Apper', title: a, meta: ['Åpne appen'], img: null }, action: 'Åpner ' + a };
+    }
+    if (V.mode === 'apps') {
+      // All ten at once, five and five: nothing else competes for the screen.
+      rows.push({ id: 'apps', title: 'Apper', items: D.apps.slice(0, 5).map(appItem) });
+      rows.push({ id: 'apps2', title: '', items: D.apps.slice(5).map(appItem) });
+    } else {
+      rows.push({ id: 'apps', title: 'Apper', items: D.apps.map(appItem) });
+    }
+    return rows;
+  }
+
+  // ── Render ─────────────────────────────────────────────────
+  var stage = K.stage, rowsEl = document.getElementById('rows');
+  var heroLayer = document.getElementById('heroLayer'), hc = document.getElementById('hc'), dotsEl = document.getElementById('dots');
+  var HERO, ROWS, f, rowEls, timer, bgTimer, layerOn = 0, ambOn = 0, lastImg = null, lastAmb = null;
+
+  function render() {
+    HERO = heroItems();
+    ROWS = buildRows();
+    stage.className = 'is-ready tab-' + NAV.tab + ' hero-' + V.hero + ' rows-' + V.rows + ' mode-' + V.mode;
+    rowsEl.innerHTML = ROWS.map(function (r) {
+      return '<section class="row"><h2>' + (r.title || '') + (r.count ? '<span class="count">' + r.count + '</span>' : '') +
+        (r.tag ? '<span class="tag">' + r.tag + '</span>' : '') + '</h2><div class="track">' +
+        r.items.map(function (it) { return '<div class="item">' + it.html + '</div>'; }).join('') + '</div></section>';
+    }).join('');
+    rowEls = [].slice.call(rowsEl.querySelectorAll('.row'));
+    dotsEl.innerHTML = HERO.map(function () { return '<span><i></i></span>'; }).join('');
+    f = { area: V.mode === 'apps' ? 'rows' : 'hero', hero: 0, row: 0, idx: ROWS.map(function () { return 0; }) };
+    lastImg = lastAmb = null;
+    showHero(0, true);
+    update();
+  }
+
+  function setBg(img, amb) {
+    if (img !== lastImg) {
+      lastImg = img;
+      var next = document.getElementById('h' + (1 - layerOn));
+      var cur = document.getElementById('h' + layerOn);
+      if (img) {
+        next.style.backgroundImage = 'url(' + img + ')';
+        next.className = 'bg-layer is-on';
+        cur.className = 'bg-layer';
+        layerOn = 1 - layerOn;
+      } else {
+        cur.className = 'bg-layer';
+      }
+    }
+    // The glow uses the 64 px copies from snapshot.py (img/a/), soft once stretched.
+    if (amb) amb = amb.replace(/^img\/(b|y|h)\//, 'img/a/');
+    if (amb !== lastAmb) {
+      lastAmb = amb;
+      var an = document.getElementById('amb' + (1 - ambOn)), ac = document.getElementById('amb' + ambOn);
+      if (amb) {
+        an.style.backgroundImage = 'url(' + amb + ')';
+        an.className = 'bg-layer is-on';
+        ac.className = 'bg-layer';
+        ambOn = 1 - ambOn;
+      } else {
+        ac.className = 'bg-layer';
+      }
+    }
+  }
+
+  function heroHtml(h, inRows) {
+    var html = '<div class="kicker">' + h.kicker + '</div>';
+    if (h.ytTitle) {
+      html += '<div class="yt-title">' + K.esc(h.ytTitle) + '</div>';
+    } else {
+      html += '<div class="logo-wrap">' + (h.logo ? '<img src="' + h.logo + '">' :
+        '<div class="title-text"' + (h.title.length > 18 ? ' style="font-size:68px;line-height:72px"' : '') + '>' + K.esc(h.title) + '</div>') + '</div>';
+    }
+    html += '<div class="meta">' + (h.meta || []).join('<span class="sep">·</span>') + '</div>';
+    if (h.progress != null) {
+      html += '<div class="prog-line"><div class="progress"><i style="transform:scaleX(' + h.progress.toFixed(3) + ')"></i></div><span>' + h.progressText + '</span></div>';
+    }
+    if (h.overview) html += '<div class="overview">' + K.esc(h.overview) + '</div>';
+    if (h.button && !inRows) {
+      html += '<div class="actions"><span class="btn is-primary"><span class="play"></span>' + h.button +
+        (h.app ? '<span class="app-chip">' + K.esc(h.app) + '</span>' : '') + '</span></div>';
+    }
+    return html;
+  }
+
+  var swapTimer;
+  function showContent(h, inRows, instant) {
+    clearTimeout(swapTimer);
+    if (instant) { hc.innerHTML = heroHtml(h, inRows); hc.className = 'hc'; return; }
+    hc.className = 'hc is-swapping';
+    swapTimer = setTimeout(function () {
+      hc.innerHTML = heroHtml(h, inRows);
+      hc.className = 'hc';
+    }, 200);
+  }
+
+  function showHero(i, instant) {
+    if (!HERO.length) return;
+    f.hero = (i + HERO.length) % HERO.length;
+    var h = HERO[f.hero];
+    showContent(h, false, instant);
+    setBg(h.img, h.ambient);
+    [].forEach.call(dotsEl.children, function (d, j) {
+      d.className = j < f.hero ? 'is-done' : j === f.hero ? 'is-on' : '';
+    });
+    // Restart the fill animation on the current dot.
+    var cur = dotsEl.children[f.hero];
+    if (cur) { var clone = cur.cloneNode(true); dotsEl.replaceChild(clone, cur); }
+    clearTimeout(timer);
+    timer = setTimeout(function () { if (f.area === 'hero' && NAV.tab === 'tv') showHero(f.hero + 1); }, 8000);
+  }
+
+  function anchor() { return V.mode === 'apps' ? 700 : { a: 620, b: 150, c: 590 }[V.hero]; }
+
+  function update() {
+    var inRows = f.area === 'rows';
+    stage.className = stage.className.replace(/ ?(in-rows|is-hero-focus|is-paused)/g, '') +
+      (inRows ? ' in-rows is-paused' : NAV.area === 'content' ? ' is-hero-focus' : '');
+    rowEls.forEach(function (el, r) {
+      var items = el.querySelectorAll('.item');
+      [].forEach.call(items, function (it, i) {
+        it.className = 'item' + (inRows && r === f.row && i === f.idx[r] ? ' is-focus' : '');
+      });
+      K.scrollTrack(el.querySelector('.track'), items, f.idx[r], 1696);
+      el.className = 'row' + (inRows && r < f.row && V.mode !== 'apps' && V.hero !== 'b' ? ' is-gone' : '');
+    });
+    var y = 0;
+    if (inRows && V.mode !== 'apps') {
+      y = anchor() - rowEls[f.row].offsetTop;
+      // In B the last rows stop at the bottom edge instead of leaving the screen empty.
+      if (V.hero === 'b') y = Math.max(y, 1080 - 24 - rowsEl.offsetHeight);
+    }
+    rowsEl.style.transform = 'translateY(' + y + 'px)';
+    heroLayer.style.transform = V.hero === 'b' ? 'translateY(' + y + 'px)' : '';
+    if (inRows && V.mode !== 'apps' && V.hero !== 'b') {
+      var it = ROWS[f.row].items[f.idx[f.row]];
+      clearTimeout(bgTimer);
+      showContent(it.hero, true);
+      // Wait for focus to settle before swapping the big picture.
+      bgTimer = setTimeout(function () { setBg(it.hero.img, it.hero.ambient || it.hero.img); }, 260);
+    }
+  }
+
+  // ── Tabs ───────────────────────────────────────────────────
+  var tabsEl = document.getElementById('tabs');
+  var PANES = Panes(D, NOW, DEPLOYS);
+  var grid = { home: 0, stasera: 0, github: 0, ha: 0 };
+  ['home', 'stasera', 'github', 'ha'].forEach(function (t) { document.getElementById('pane-' + t).innerHTML = PANES[t](); });
+  var featured = D.watching.filter(function (c) { return inApps(c) && c.hero; })[0];
+
+  function tiles() { return [].slice.call(document.getElementById('pane-' + NAV.tab).querySelectorAll('.tile')); }
+  function tabIndex() { for (var i = 0; i < TABS.length; i++) if (TABS[i][0] === NAV.tab) return i; return 0; }
+  function draw() {
+    tabsEl.innerHTML = TABS.map(function (t) {
+      return '<span class="tab' + (t[0] === NAV.tab ? ' is-current' : '') +
+        (t[0] === NAV.tab && NAV.area === 'tabs' ? ' is-focus' : '') + '">' + t[1] + '</span>';
+    }).join('');
+    if (NAV.tab !== 'tv') {
+      tiles().forEach(function (el, i) {
+        el.className = el.className.replace(/ ?is-focus/g, '') + (NAV.area === 'content' && i === grid[NAV.tab] ? ' is-focus' : '');
+      });
+    }
+  }
+  function showTab(name) {
+    NAV.tab = name;
+    TABS.forEach(function (t) { document.getElementById('pane-' + t[0]).className = 'pane' + (t[0] === name ? ' is-on' : ''); });
+    stage.className = stage.className.replace(/ ?tab-\w+/g, '') + ' tab-' + name;
+    if (name === 'tv') {
+      showHero(f.hero, true);
+      update();
+    } else {
+      clearTimeout(timer);
+      setBg(lastImg, name === 'home' && featured ? featured.backdrop : null);
+    }
+    history.replaceState(null, '', K.query({ tab: name, hero: V.hero, rows: V.rows, mode: V.mode }));
+    draw();
+  }
+  function focusTabs() {
+    NAV.area = 'tabs';
+    if (NAV.tab === 'tv') { f.area = V.mode === 'apps' ? 'rows' : 'hero'; update(); }
+    draw();
+  }
+  function enterTab() {
+    NAV.area = 'content';
+    if (NAV.tab === 'tv') { f.area = V.mode === 'apps' ? 'rows' : 'hero'; f.row = 0; update(); }
+    draw();
+  }
+
+  function set(k, v) {
+    V[k] = v;
+    history.replaceState(null, '', K.query({ tab: NAV.tab, hero: V.hero, rows: V.rows, mode: V.mode }));
+    render();
+    showTab(NAV.tab);
+    K.hud('TV-fanen<br>Helt <b>' + HERO_NAMES[V.hero] + '</b><br>Rader <b>' + ROW_NAMES[V.rows] + '</b><br>Moduler <b>' + MODE_NAMES[V.mode] + '</b>');
+  }
+
+  K.onKey(function (k) {
+    var row = ROWS[f.row];
+    if (k === '1' || k === '2' || k === '3') return set('hero', { 1: 'a', 2: 'b', 3: 'c' }[k]);
+    if (k === '4' || k === '5' || k === '6') return set('rows', { 4: 'land', 5: 'poster', 6: 'mixed' }[k]);
+    if (k === '7' || k === '8' || k === '9') return set('mode', { 7: 'stasera', 8: 'youtube', 9: 'apps' }[k]);
+    if (k === 'red') return set('hero', { a: 'b', b: 'c', c: 'a' }[V.hero]);
+    if (k === 'green') return set('rows', { land: 'poster', poster: 'mixed', mixed: 'land' }[V.rows]);
+    if (k === 'yellow') return set('mode', { stasera: 'youtube', youtube: 'apps', apps: 'stasera' }[V.mode]);
+    if (k === 'h' || k === '0' || k === 'blue') {
+      return K.hud('<kbd>↑</kbd> til fanelinja, <kbd>←→</kbd> der bytter fane<br><kbd>OK</kbd> på en flis i Hjem går til fanen<br>' +
+        'TV-fanen: <kbd>1–3</kbd> helt A, B, C · <kbd>4–6</kbd> rader<br><kbd>7–9</kbd> med Stasera, uten, bare apper', 6000);
+    }
+
+    if (NAV.area === 'tabs') {
+      var t = tabIndex();
+      if (k === 'left' && t > 0) showTab(TABS[t - 1][0]);
+      else if (k === 'right' && t < TABS.length - 1) showTab(TABS[t + 1][0]);
+      else if (k === 'down' || k === 'enter') enterTab();
+      else if (k === 'back') { if (NAV.tab !== 'home') showTab('home'); else location.href = 'index.html' + K.query(V); }
+      return;
+    }
+
+    if (NAV.tab !== 'tv') {
+      var ts = tiles(), cur = grid[NAV.tab];
+      if (k === 'left' || k === 'right' || k === 'up' || k === 'down') {
+        var n = spatialMove(ts, cur, k);
+        if (n >= 0) { grid[NAV.tab] = n; draw(); }
+        else if (k === 'up') focusTabs();
+      } else if (k === 'enter') {
+        var go = ts[cur].getAttribute('data-goto'), msg = ts[cur].getAttribute('data-toast');
+        if (go) { showTab(go); enterTab(); }
+        else K.toast(msg || 'Her åpner kortet en større visning');
+      } else if (k === 'back') focusTabs();
+      return;
+    }
+
+    if (f.area === 'hero') {
+      if (k === 'left') showHero(f.hero - 1);
+      else if (k === 'right') showHero(f.hero + 1);
+      else if (k === 'down') { f.area = 'rows'; f.row = 0; update(); }
+      else if (k === 'up' || k === 'back') focusTabs();
+      else if (k === 'enter') K.toast('Åpner ' + (HERO[f.hero].ytTitle ? 'videoen' : K.esc(HERO[f.hero].title)) + ' i ' + HERO[f.hero].app);
+      return;
+    }
+    if (k === 'left') { if (f.idx[f.row] > 0) { f.idx[f.row]--; update(); } }
+    else if (k === 'right') { if (f.idx[f.row] < row.items.length - 1) { f.idx[f.row]++; update(); } }
+    else if (k === 'down') { if (f.row < ROWS.length - 1) { f.row++; update(); } }
+    else if (k === 'up') {
+      if (f.row > 0) { f.row--; update(); }
+      else if (V.mode === 'apps') focusTabs();
+      else { f.area = 'hero'; update(); showHero(f.hero, true); }
+    } else if (k === 'back') {
+      if (V.mode === 'apps') focusTabs();
+      else { f.area = 'hero'; f.row = 0; update(); showHero(f.hero, true); }
+    } else if (k === 'enter') K.toast(row.items[f.idx[f.row]].action);
+  });
+
+  K.clock(document.getElementById('clock'), 'Oslo 7°');
+  K.clock(document.getElementById('bigClock'));
+  document.getElementById('bigDate').innerHTML = K.longDate(new Date()).replace(/^./, function (c) { return c.toUpperCase(); });
+  render();
+  showTab(NAV.tab);
+  if (!P.quiet) setTimeout(function () { K.hud('Trykk <kbd>H</kbd> for tastene', 3000); }, 600);
+})();
+</script>
+</body>
+</html>
