@@ -245,9 +245,9 @@ var I18N = (function () {
     },
     /** The catalogue in use: "en", "pt", "zh-CN"… */
     get lang() { return lang; },
-    /** The language without its country, as TMDB names it ("zh" for "zh-CN"). */
+    /** The language without its country, as Stasera names it ("zh" for "zh-CN"). */
     get base() { return base(lang); },
-    /** BCP 47 tag for dates, numbers and TMDB. */
+    /** BCP 47 tag for dates, numbers and Stasera. */
     locale: function () { return locale; },
     languages: languages,
     languageName: languageName,

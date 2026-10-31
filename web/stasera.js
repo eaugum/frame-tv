@@ -14,7 +14,7 @@ var Stasera = (function () {
 
   var BASE = Settings.get('staseraUrl').replace(/\/+$/, '');
   var ON = !!BASE && Modules.on('stasera');
-  var TOKEN = 'fmtv.stasera.token', CACHE = 'fmtv.stasera.home';
+  var TOKEN = 'fmtv.stasera.token', CACHE = 'fmtv.stasera.home2';
   var EVERY = 5 * 60000, POLL = 3000;
   var EMPTY = {watching: [], watchingCount: 0, wantToStart: [], movies: [], friends: [], stats: null};
 
@@ -171,7 +171,7 @@ var Stasera = (function () {
     });
   }
 
-  // Stasera names services and channels as TMDB does; these lead to an app under another name.
+  // Some of the services and channels Stasera names lead to an app under another name.
   var ALIAS = {'TVNorge': 'Max', 'VGTV': 'VG TV', 'VG+': 'VG TV'};
 
   /** The service of a title among the TV's apps ({key, name}), from its providers, then its channels. */
@@ -207,13 +207,13 @@ var Stasera = (function () {
     for (i = 0; i < all.length; i++) {
       var w = all[i];
       if (w.title.toLowerCase().indexOf(lower) < 0) continue;
-      out.push({tmdbId: w.tmdbId, type: w.kind === 'movie' ? 'movie' : 'tv', title: w.title, year: w.year, posterPath: w.posterPath,
+      out.push({titleId: w.titleId, type: w.kind === 'movie' ? 'movie' : 'tv', title: w.title, year: w.year, posterPath: w.posterPath,
         providers: list(w.providers), networks: list(w.networks), status: i < h.watching.length ? 'watching' : 'watchlist'});
     }
     for (i = 0; i < SAMPLE.length; i++) {
       var s = SAMPLE[i];
       if (s[0].toLowerCase().indexOf(lower) < 0) continue;
-      out.push({tmdbId: -1 - i, type: s[2], title: s[0], year: s[1], posterPath: null, providers: s[3], networks: [], status: s[4]});
+      out.push({titleId: -1 - i, type: s[2], title: s[0], year: s[1], posterPath: null, providers: s[3], networks: [], status: s[4]});
     }
     return out;
   }
@@ -263,26 +263,26 @@ var Stasera = (function () {
   }
 
   /** The preview's details for a title: ours from /tv/home, else the sample's, with people and seasons. */
-  function sampleTitle(kind, tmdbId) {
+  function sampleTitle(kind, titleId) {
     var all = data.watching.concat(data.wantToStart, data.movies), out = null, i, k;
     for (i = 0; i < all.length && !out; i++) {
-      if (all[i].tmdbId === tmdbId && all[i].kind === kind) {
+      if (all[i].titleId === titleId && all[i].kind === kind) {
         var w = all[i];
         out = {};
         for (k in w) if (w.hasOwnProperty(k)) out[k] = w[k];
         out.status = i < data.watching.length ? 'watching' : 'watchlist';
-        if (w.episodeTmdbId) {
-          out.nextEpisode = {episodeTmdbId: w.episodeTmdbId, seasonNumber: w.seasonNumber, episodeNumber: w.episodeNumber,
+        if (w.episodeId) {
+          out.nextEpisode = {episodeId: w.episodeId, seasonNumber: w.seasonNumber, episodeNumber: w.episodeNumber,
             name: w.episodeName, overview: w.episodeOverview, stillPath: w.stillPath, airDate: w.airDate, released: true};
         }
       }
     }
-    var s = SAMPLE[-1 - tmdbId];
+    var s = SAMPLE[-1 - titleId];
     if (!out && s) {
-      out = {kind: kind, tmdbId: tmdbId, title: s[0], year: s[1], providers: s[3], networks: [], status: s[4],
+      out = {kind: kind, titleId: titleId, title: s[0], year: s[1], providers: s[3], networks: [], status: s[4],
         seasons: kind === 'show' ? s[5] : null, runtime: kind === 'movie' ? s[5] : null, overview: s[6], genres: []};
       if (s[4] === 'watching') {
-        out.nextEpisode = {episodeTmdbId: 1, seasonNumber: 2, episodeNumber: 5, name: 'Trojan\'s Horse',
+        out.nextEpisode = {episodeId: 1, seasonNumber: 2, episodeNumber: 5, name: 'Trojan\'s Horse',
           overview: 'Mark and Helly try to find out what Lumon has done with the outies.', stillPath: null, airDate: '2025-02-14',
           released: true};
       }
@@ -304,7 +304,7 @@ var Stasera = (function () {
     var credits = [];
     for (var i = 0; i < SAMPLE.length; i++) {
       var s = SAMPLE[i];
-      credits.push({kind: s[2] === 'movie' ? 'movie' : 'show', tmdbId: -1 - i, title: s[0], year: s[1], posterPath: null,
+      credits.push({kind: s[2] === 'movie' ? 'movie' : 'show', titleId: -1 - i, title: s[0], year: s[1], posterPath: null,
         backdropPath: null, character: i ? '' : p[1], jobs: [], status: s[4]});
     }
     return {personId: personId, name: p[0], profilePath: null, biography: p[4], birthday: p[2], deathday: null,
@@ -323,13 +323,13 @@ var Stasera = (function () {
    * library, and (from AUG-1485) the cast, who made it, the age rating, the trailer, and a show's next episode and
    * seasons. An older Stasera leaves those out. kind: 'show' or 'movie'. done(error, title, sample).
    */
-  function title(kind, tmdbId, done) {
+  function title(kind, titleId, done) {
     if (!ON || !token) { done(new Error('unlinked'), null); return; }
-    request('GET', '/tv/title?kind=' + kind + '&id=' + tmdbId, null, function (status, json) {
+    request('GET', '/tv/title?kind=' + kind + '&id=' + titleId, null, function (status, json) {
       if (status === 200 && json && json.title) { done(null, json.title); return; }
       // The sample's ids are negative, and Stasera says no to them.
-      if (TV.name === 'browser' && (status === 0 || status === 404 || tmdbId < 0) && sampleTitle(kind, tmdbId)) {
-        done(null, sampleTitle(kind, tmdbId), true);
+      if (TV.name === 'browser' && (status === 0 || status === 404 || titleId < 0) && sampleTitle(kind, titleId)) {
+        done(null, sampleTitle(kind, titleId), true);
         return;
       }
       done(failure(status, json), null);
@@ -353,12 +353,12 @@ var Stasera = (function () {
   }
 
   /** Puts a title in Want to Start (POST /tv/want): a show is followed, a movie goes on the watchlist. */
-  function want(kind, tmdbId, done) {
+  function want(kind, titleId, done) {
     if (!ON || !token) { done(new Error('unlinked'), null); return; }
-    request('POST', '/tv/want', {kind: kind, tmdbId: tmdbId}, function (status, json) {
+    request('POST', '/tv/want', {kind: kind, titleId: titleId}, function (status, json) {
       if (status === 200 && json && json.title) { done(null, json.title); refresh(true); return; }
-      if (TV.name === 'browser' && (status === 0 || status === 404) && sampleTitle(kind, tmdbId)) {
-        var t = sampleTitle(kind, tmdbId);
+      if (TV.name === 'browser' && (status === 0 || status === 404) && sampleTitle(kind, titleId)) {
+        var t = sampleTitle(kind, titleId);
         if (!t.status) t.status = 'watchlist';
         done(null, t, true);
         return;
@@ -369,7 +369,7 @@ var Stasera = (function () {
 
   /** The preview's answer to a mark: the sample with its new place in the library. */
   function sampleMarked(item, undoing, previous) {
-    var t = sampleTitle(item.kind, item.tmdbId);
+    var t = sampleTitle(item.kind, item.titleId);
     if (!t) return null;
     if (item.kind === 'movie') t.status = undoing ? previous : 'watched';
     else if (!undoing && t.nextEpisode) t.nextEpisode.episodeNumber = item.episodeNumber + 1;
@@ -380,13 +380,13 @@ var Stasera = (function () {
   function mark(path, item, previous, done) {
     if (!ON || !token) { done(new Error('unlinked'), null); return; }
     var undoing = path === '/tv/unwatched', body;
-    if (item.kind === 'movie') body = {kind: 'movie', tmdbId: item.tmdbId};
-    else body = {episodeTmdbId: item.episodeTmdbId};
+    if (item.kind === 'movie') body = {kind: 'movie', titleId: item.titleId};
+    else body = {episodeId: item.episodeId};
     if (undoing) { if (item.kind === 'movie') body.previous = previous; }
     else body.localHour = new Date().getHours();
     request('POST', path, body, function (status, json) {
       if (status === 200) { done(null, json && json.title, !json || json.changed !== false); refresh(true); return; }
-      if (TV.name === 'browser' && (status === 0 || status === 404 || item.tmdbId < 0) && sampleMarked(item, undoing, previous)) {
+      if (TV.name === 'browser' && (status === 0 || status === 404 || item.titleId < 0) && sampleMarked(item, undoing, previous)) {
         done(null, sampleMarked(item, undoing, previous), true);
         return;
       }

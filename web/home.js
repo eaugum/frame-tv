@@ -456,7 +456,7 @@
       var f = all[i], e = f.entity, dup = false;
       if (!e || !(e.backdropPath || e.posterPath)) continue;
       for (var j = 0; j < out.length; j++) {
-        if (out[j].entity.tmdbId === e.tmdbId && (out[j].kind === f.kind || out[j].together)) dup = true;
+        if (out[j].entity.titleId === e.titleId && (out[j].kind === f.kind || out[j].together)) dup = true;
       }
       if (!dup) out.push(f);
     }
@@ -466,7 +466,7 @@
   /** A friend's title, when it's one of ours: we know its app then. */
   function ownTitle(entity) {
     var h = Stasera.home(), all = h.watching.concat(h.wantToStart, h.movies);
-    for (var i = 0; i < all.length; i++) if (all[i].tmdbId === entity.tmdbId && (all[i].kind === 'movie') === (entity.kind === 'movie')) return all[i];
+    for (var i = 0; i < all.length; i++) if (all[i].titleId === entity.titleId && (all[i].kind === 'movie') === (entity.kind === 'movie')) return all[i];
     return null;
   }
 
@@ -703,7 +703,7 @@
   var ambOn = 0, ambUrl = null, shotOn = 0, shotUrl = null;
 
   /**
-   * The light around: TMDB's smallest backdrop, stretched; soft by itself and cheap to draw (no filter: blur). bg: a
+   * The light around: the smallest backdrop, stretched; soft by itself and cheap to draw (no filter: blur). bg: a
    * drawn picture (a CSS gradient) instead.
    */
   function ambient(path, bg) {
@@ -2430,7 +2430,7 @@
   function openTitle(item, changed) {
     var p = newPage('title', {item: merged(item, {}), changed: changed || null});
     showPage(p);
-    Stasera.title(p.item.kind, p.item.tmdbId, function (err, t) {
+    Stasera.title(p.item.kind, p.item.titleId, function (err, t) {
       p.loading = false;
       if (t) p.item = merged(p.item, t);
       else p.note = titleError(err);
@@ -2473,7 +2473,7 @@
     if (p.busy) return;
     p.busy = true;
     var it = p.item;
-    Stasera.want(it.kind, it.tmdbId, function (err, t) {
+    Stasera.want(it.kind, it.titleId, function (err, t) {
       p.busy = false;
       if (!t) { toast(titleError(err)); return; }
       p.item = merged(p.item, t);
@@ -2488,7 +2488,7 @@
   function markTitle() {
     var it = page.item, next = nextOf(it);
     if (kindOf(it) === 'movie') markItem(it, it.status || null);
-    else if (next) markItem(merged(it, {episodeTmdbId: next.episodeTmdbId, seasonNumber: next.seasonNumber, episodeNumber: next.episodeNumber}), null);
+    else if (next) markItem(merged(it, {episodeId: next.episodeId, seasonNumber: next.seasonNumber, episodeNumber: next.episodeNumber}), null);
   }
 
   /** "Watched ✓" only takes back what was marked while the page was open: an older mark would lose its date. */
@@ -2673,7 +2673,7 @@
     caption(node, who.name, who.character);
   }
 
-  /** "Acting" and the rest of TMDB's departments, as the kicker over a name. */
+  /** "Acting" and the rest of Stasera's departments, as the kicker over a name. */
   function departmentLabel(d) {
     if (d === 'Acting') return tr('Actor');
     if (d === 'Directing') return tr('Director');
@@ -4073,7 +4073,7 @@
   }
 
   function markable(item) {
-    return kindOf(item) === 'movie' ? item.status !== 'watched' : !!item.episodeTmdbId;
+    return kindOf(item) === 'movie' ? item.status !== 'watched' : !!item.episodeId;
   }
 
   function holdable() {
@@ -4081,7 +4081,7 @@
     return undoLive() || !!(f && f.hold && (typeof f.hold === 'function' || markable(f.hold)));
   }
 
-  function sameTitle(a, b) { return kindOf(a) === kindOf(b) && a.tmdbId === b.tmdbId; }
+  function sameTitle(a, b) { return kindOf(a) === kindOf(b) && a.titleId === b.titleId; }
 
   /** The open title page of this item, or null. */
   function pageOf(item) {

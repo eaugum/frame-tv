@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Packs the Kino mockups as their own Tizen app, next to Frame TV: mockups/KinoMockup.wgt.
 
-    python3 mockups/snapshot.py                    # the data and images first
     python3 mockups/build_tv.py --sign frametv
     python3 tizen/install.py <the TV's IP> mockups/KinoMockup.wgt
     python3 tizen/install.py <the TV's IP> mockups/KinoMockup.wgt --uninstall
@@ -40,7 +39,7 @@ def main():
     args = sys.argv[1:]
     profile = args[args.index('--sign') + 1] if '--sign' in args else None
     if not os.path.exists(os.path.join(HERE, 'data', 'snapshot.js')):
-        sys.exit('No data yet: python3 mockups/snapshot.py')
+        sys.exit('No data: mockups/data/snapshot.js is missing')
 
     files = {'config.xml': MANIFEST.encode('utf-8')}
     with open(os.path.join(ROOT, 'tizen', 'icon.png'), 'rb') as f:

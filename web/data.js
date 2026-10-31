@@ -224,7 +224,7 @@ var Data = (function () {
 
   // MARK: - Streaming services and their apps
 
-  /** Service name on TMDB (part of it, lowercase) → our key, how to find its app on the TV (id, name), its name. */
+  /** Service name in Stasera (part of it, lowercase) → our key, how to find its app on the TV (id, name), its name. */
   var SERVICES = [
     ['netflix', 'netflix', /^netflix$/, /netflix/i, 'Netflix'],
     ['prime video', 'prime', /^amazon$/, /prime video|amazon/i, 'Prime Video'],
@@ -278,7 +278,7 @@ var Data = (function () {
     onChange: function (fn) { listeners.push(fn); },
     setApps: function (apps) { installed = apps; },
     appFor: appFor,
-    /** The first of these services (TMDB's names) with its app on this TV: {key, name}, or null. */
+    /** The first of these services (Stasera's names) with its app on this TV: {key, name}, or null. */
     serviceFor: function (names) {
       for (var i = 0; i < names.length; i++) {
         var s = service(names[i]);
