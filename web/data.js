@@ -289,7 +289,10 @@ var Data = (function () {
     refresh: function () { refreshWeather(); },
     get weather() { return weather; },
     get weatherAt() { return weatherAt; },
-    image: function (path, size) { return path ? 'https://image.tmdb.org/t/p/' + (size || 'w1280') + path : ''; },
+    /** A picture from a path in Stasera's answers. */
+    image: function (path, size) {
+      return path ? Settings.get('staseraUrl').replace(/\/+$/, '') + '/tv/img/' + (size || 'w1280') + path : '';
+    },
 
     /** Night at the location: from sunset to sunrise (the last forecast; without one, 6:00 and 18:00). */
     isNight: function (at) {
