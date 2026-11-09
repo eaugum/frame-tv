@@ -49,7 +49,7 @@ button: it isn't in `tizen.tvinputdevice.getSupportedKeys()`, and a press never 
 turn on *Autorun Last App* in Settings → General → Smart Features and keep Frame TV first in the app row; then Home → OK
 opens it. Home Assistant can also start the app through the remote control API.
 
-With temporary root (`tools/root/`; tested on a 2022 Frame, Tizen 6.5, firmware build 20260225), the Home button can
+With temporary root ([Root on the TV](root.md); tested on a 2022 Frame, Tizen 6.5, firmware build 20260225), the Home button can
 open Frame TV:
 
 - Samsung's `app_operation_set_current_app` points `http://tizen.org/appcontrol/operation/main` at

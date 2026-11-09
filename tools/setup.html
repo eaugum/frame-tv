@@ -56,6 +56,7 @@
   #fromtv td { border-top: 1px solid var(--line); padding: 8px 10px 8px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; vertical-align: top; }
   #fromtv td.was { color: var(--muted); }
   #fromtv .actions { display: flex; gap: 10px; padding-bottom: 16px; }
+  #root .actions { display: flex; gap: 10px; flex-wrap: wrap; padding-bottom: 14px; }
   @media (max-width: 640px) { .field { grid-template-columns: 1fr; } .field .help { grid-column: 1; } }
 </style>
 </head>
@@ -80,6 +81,20 @@
     </div>
   </section>
   <div id="sections"></div>
+  <section id="root">
+    <h2>Root on the TV</h2>
+    <p class="about">Turns off Samsung's tracking (ACR, ads, voice, analytics) and makes the remote's Home button
+      open Frame TV, through temporary root: <code>tools/root/root.sh</code>, tested on a 2022 Frame. It needs
+      <code>tools/root/root.local.env</code>. The TV's own values are kept on the TV the first time, so everything
+      can be undone.</p>
+    <div class="actions">
+      <button class="secondary" id="root-status" type="button">Status</button>
+      <button class="primary" id="root-apply" type="button">Apply everything</button>
+      <button class="secondary" id="root-restore" type="button">Undo everything</button>
+    </div>
+    <p class="note">A restart (not standby) undoes step C, the four services that watch the network and report
+      from the TV. "Apply everything" again puts it back and leaves the rest as it is.</p>
+  </section>
   <pre class="log" id="log"></pre>
 </main>
 <div class="bar"><div class="inner">
@@ -252,34 +267,54 @@ async function spotify(field) {
   }
 }
 
-async function install() {
-  if (!(await save())) return;
+const BUTTONS = ['save', 'install', 'root-status', 'root-apply', 'root-restore'];
+
+/** POSTs and shows the output as it comes; the server ends it with @@DONE or @@FAILED. */
+async function stream(path, body, working, done) {
   busy = true;
-  $('save').disabled = $('install').disabled = true;
+  BUTTONS.forEach((id) => { $(id).disabled = true; });
   const log = $('log');
   log.style.display = 'block';
   log.textContent = '';
-  status('Building and installing…');
-  let ok = false;
+  status(working);
   try {
-    const r = await fetch('/api/install', {method: 'POST', headers: {'X-Setup': KEY, 'Content-Type': 'application/json'}, body: '{}'});
+    const r = await fetch(path, {method: 'POST', headers: {'X-Setup': KEY, 'Content-Type': 'application/json'}, body: JSON.stringify(body)});
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'HTTP ' + r.status);
     const reader = r.body.getReader(), dec = new TextDecoder();
     let text = '';
     for (;;) {
-      const {done, value} = await reader.read();
-      if (done) break;
+      const {done: end, value} = await reader.read();
+      if (end) break;
       text += dec.decode(value, {stream: true});
       log.textContent = text.replace(/\n@@(DONE|FAILED)\n$/, '');
       log.scrollTop = log.scrollHeight;
     }
-    ok = /@@DONE\n$/.test(text);
-    status(ok ? 'Installed on the TV.' : 'It didn\'t finish: see the output.', ok ? 'good' : 'bad');
+    const ok = /@@DONE\n$/.test(text);
+    status(ok ? done : 'It didn\'t finish: see the output.', ok ? 'good' : 'bad');
   } catch (e) {
     status(e.message, 'bad');
   }
   busy = false;
-  $('save').disabled = $('install').disabled = false;
+  BUTTONS.forEach((id) => { $(id).disabled = false; });
+}
+
+async function install() {
+  if (!(await save())) return;
+  await stream('/api/install', {}, 'Building and installing…', 'Installed on the TV.');
+}
+
+const ROOT_ACTIONS = {
+  status: {working: 'Reading the TV…', done: 'Read from the TV.'},
+  apply: {working: 'Applying everything…', done: 'Applied on the TV.',
+          ask: 'Back up the TV, then turn off the tracking apps and services and make Home open Frame TV?'},
+  restore: {working: 'Undoing everything…', done: 'The TV has its own values back.',
+            ask: 'Put back everything the TV had before: Smart Hub on Home, every app and service on?'},
+};
+
+async function root(action) {
+  const a = ROOT_ACTIONS[action];
+  if (a.ask && !confirm(a.ask)) return;
+  await stream('/api/root', {action}, a.working, a.done);
 }
 
 /** A secret as dots, with Show; anything else as it is. */
@@ -352,6 +387,7 @@ setInterval(fromTv, 3000);
 
 $('save').onclick = save;
 $('install').onclick = install;
+Object.keys(ROOT_ACTIONS).forEach((a) => { $('root-' + a).onclick = () => root(a); });
 window.addEventListener('beforeunload', (e) => { if (dirty()) e.preventDefault(); });
 load().catch((e) => status(e.message, 'bad'));
 </script>

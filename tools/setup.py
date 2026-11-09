@@ -7,6 +7,9 @@ It serves a page on 127.0.0.1 and opens it in the browser. The page's groups, ke
 config.example.properties, so a new setting there shows up here by itself. Saving keeps the file's comments and
 order. Only Python's standard library.
 
+"Root on the TV" runs tools/root/root.sh (status, apply, restore) the same way, when tools/root/root.local.env
+is there.
+
 "Upload config" on the TV (AUG-1521): with tv_ip set, it also listens on this Mac's address on the TV's network, on
 port 8890, for that one call, with setup_key. The page shows what came and writes it into the file when accepted.
 """
@@ -32,6 +35,8 @@ import translate  # noqa: E402
 import webapp  # noqa: E402
 
 EXAMPLE = os.path.join(ROOT, 'config.example.properties')
+ROOT_SH = os.path.join(ROOT, 'tools', 'root', 'root.sh')
+ROOT_ACTIONS = ('status', 'apply', 'restore')
 PAGE = os.path.join(ROOT, 'tools', 'setup.html')
 SECRET = re.compile(r'_(token|key|secret)$')
 FROM_TV_PORT = 8890
@@ -345,6 +350,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.spotify_wait()
         if route == '/api/install':
             return self.install()
+        if route == '/api/root':
+            return self.root(body.get('action'))
         if route == '/api/from-tv/accept':
             return self.from_tv_accept()
         if route == '/api/from-tv/discard':
@@ -409,14 +416,34 @@ class Handler(http.server.BaseHTTPRequestHandler):
         write(self.server.config, {'spotify_refresh_token': token})
         self.send(200, {'token': token})
 
+    def run(self, steps):
+        """Runs the commands one after another, sending the output as it comes; the last line says how it went."""
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/plain; charset=utf-8')
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        for cmd in steps:
+            self.wfile.write(('$ %s\n' % ' '.join(os.path.relpath(c, ROOT) if c.startswith(ROOT) else
+                                                  os.path.basename(c) if os.path.isabs(c) else c
+                                                  for c in cmd)).encode())
+            run = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                   stdin=subprocess.DEVNULL)
+            for line in run.stdout:
+                self.wfile.write(line)
+                self.wfile.flush()
+            if run.wait() != 0:
+                self.wfile.write(b'\n@@FAILED\n')
+                return
+        self.wfile.write(b'\n@@DONE\n')
+
     def install(self):
-        """Builds and installs, sending the output as it comes; the last line says how it went."""
+        """Builds and installs."""
         values = read(self.server.config)
         ip, profile = values.get('tv_ip', ''), values.get('sign_profile', '')
         if not ip or not profile:
             return self.send(400, {'error': 'Save tv_ip and sign_profile first.'})
         if not self.server.busy.acquire(blocking=False):
-            return self.send(409, {'error': 'A build is already running.'})
+            return self.send(409, {'error': 'Something is already running.'})
         try:
             setup = []
             url = self.server.listen_for_tv()
@@ -424,26 +451,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not values.get('setup_key'):
                     write(self.server.config, {'setup_key': secrets.token_urlsafe(24)})
                 setup = ['--setup', url]
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/plain; charset=utf-8')
-            self.send_header('Cache-Control', 'no-store')
-            self.end_headers()
-            steps = [[sys.executable, os.path.join(ROOT, 'tizen', 'build.py'), '--config', self.server.config,
-                      '--sign', profile] + setup,
-                     [sys.executable, os.path.join(ROOT, 'tizen', 'install.py'), ip]]
-            for cmd in steps:
-                self.wfile.write(('$ %s\n' % ' '.join(os.path.relpath(c, ROOT) if c.startswith(ROOT) else
-                                                      os.path.basename(c) if os.path.isabs(c) else c
-                                                      for c in cmd)).encode())
-                run = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                       stdin=subprocess.DEVNULL)
-                for line in run.stdout:
-                    self.wfile.write(line)
-                    self.wfile.flush()
-                if run.wait() != 0:
-                    self.wfile.write(b'\n@@FAILED\n')
-                    return
-            self.wfile.write(b'\n@@DONE\n')
+            self.run([[sys.executable, os.path.join(ROOT, 'tizen', 'build.py'), '--config', self.server.config,
+                       '--sign', profile] + setup,
+                      [sys.executable, os.path.join(ROOT, 'tizen', 'install.py'), ip]])
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            self.server.busy.release()
+
+    def root(self, action):
+        """tools/root/root.sh with one of its own actions; nothing else can be passed through."""
+        if action not in ROOT_ACTIONS:
+            return self.send(400, {'error': 'Unknown action.'})
+        if not os.path.exists(os.path.join(ROOT, 'tools', 'root', 'root.local.env')):
+            return self.send(400, {'error': 'Copy tools/root/root.example.env to root.local.env and fill it in first.'})
+        if not self.server.busy.acquire(blocking=False):
+            return self.send(409, {'error': 'Something is already running.'})
+        try:
+            self.run([['/bin/sh', ROOT_SH, action]])
         except (BrokenPipeError, ConnectionResetError):
             pass
         finally:

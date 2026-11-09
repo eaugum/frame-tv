@@ -40,6 +40,7 @@ you want, one at a time.
 - [Modules and settings](docs/modules.md): what each module needs, and every setting
 - [Home Assistant](docs/home-assistant.md): the token, the tab, the package and the events
 - [Troubleshooting](docs/troubleshooting.md): when something doesn't work
+- [Root on the TV](docs/root.md): optional; Samsung's tracking off, and the Home button opens Frame TV
 - [Development](docs/development.md): building, the certificate, the preview and the code
 - [Frame Art](https://github.com/eaugum/frame-art): the add-on that runs Art Mode
 

@@ -16,3 +16,7 @@ TASKS.md
 # Samsung's Tizen CLI and the signing certificate stay local (tizen/make-certificate.sh, tizen/add-profile.sh)
 tizen-studio/
 tizen-studio-data/
+
+# Root tooling: your TV's details and everything the script fetches
+tools/root/root.local.env
+tools/root/work/
