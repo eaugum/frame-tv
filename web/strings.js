@@ -229,8 +229,13 @@ var I18N = (function () {
     if (code === 'en') return 'en-US';
     if (code === 'pt') return 'pt-BR';
     if (code.indexOf('-') > 0) return code;
-    var tv = navigator.language || '';
-    if (base(tv) === code && tv.indexOf('-') > 0) return tv;
+    var tv = (navigator.language || '').replace('_', '-');
+    var parts = tv.split('-'), country = parts[parts.length - 1];
+    if (parts.length > 1 && base(tv) === code) {
+      if (parts[0].toLowerCase() === code) return tv;
+      // Same catalogue under another code (nn, no, in, iw): Intl would format nn in nynorsk.
+      if (/^[A-Za-z]{2}$/.test(country)) return code + '-' + country.toUpperCase();
+    }
     return REGIONS[code] ? code + '-' + REGIONS[code] : code;
   }
 
