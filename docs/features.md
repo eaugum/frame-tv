@@ -5,7 +5,9 @@ What each tab and page does. What a module needs in order to show up is in [modu
 - **The tab bar:** the gear for the settings (All Apps is there too) and a button for Art Mode, search (a magnifying
   glass, when the TV is linked to Stasera), Home, TV, YouTube, Stats, GitHub, Home Assistant and Spotify, and the day,
   the weather and the clock on the right. A tab for something that is off or not set up isn't shown. The TV starts on
-  Home; up goes to the tab bar, left and right there switch tabs, and Back goes to the tab bar and then to Home.
+  Home; up goes to the tab bar, left and right there switch tabs, and Back goes to the tab bar and then to Home. Back
+  on Home's tab bar opens Smart Hub. Where Frame TV is the TV's Home (see [Troubleshooting](troubleshooting.md#on-the-tv)),
+  the remote's Home key brings back the Home tab.
 - **Home:** the greeting from Stasera ("Ada Lovelace, up late?", the same as on Stasera's home page, already in the
   TV's language from Stasera; without Stasera "Good evening" with `name` from `config.properties`), "Continue
   Watching", new episodes, and at the bottom the first four of Stasera, YouTube, GitHub, Home Assistant, friends,

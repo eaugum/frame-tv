@@ -44,11 +44,25 @@ with the right address and it still doesn't answer, pull the TV's power cable fo
 
 ## On the TV
 
-**The Home button opens Smart Hub, not Frame TV.** The app can't catch that button. It isn't in
-`tizen.tvinputdevice.getSupportedKeys()`, and a Home press never arrives as a `keydown`: it just puts the app in the
-background. To make the TV start in Frame TV, turn on *Autorun Last App* in Settings → General → Smart Features, and
-keep Frame TV first in the app row; then Home → OK opens it. Home Assistant can also start the app through the remote
-control API.
+**The Home button opens Smart Hub, not Frame TV.** That is how Samsung sets the TV up, and the app can't catch the
+button: it isn't in `tizen.tvinputdevice.getSupportedKeys()`, and a press never arrives as a `keydown`. Without root,
+turn on *Autorun Last App* in Settings → General → Smart Features and keep Frame TV first in the app row; then Home → OK
+opens it. Home Assistant can also start the app through the remote control API.
+
+With temporary root (`tools/root/`; tested on a 2022 Frame, Tizen 6.5, firmware build 20260225), the Home button can
+open Frame TV:
+
+- Samsung's `app_operation_set_current_app` points `http://tizen.org/appcontrol/operation/main` at
+  `FrameTVapp.FrameTV`, and `db/appfw/home_appid` is set to the same. On that firmware the call also moves
+  `db/appfw/startup_appid` and `db/appfw/booting_appid_backup`; `db/first_screen/type` stays Smart Hub. The TV still
+  turns on in Art Mode, and Source, Multi View and the apps work as before.
+- Save the four old values first (all `com.samsung.tv.csfs` there). Undoing it means writing them back, as root again.
+- Undo it before `tizen/install.py --uninstall`, or Home points at an app that's gone. A firmware update can reset it,
+  or close the way to root.
+
+The app needs nothing set for this. Back on the first screen opens Smart Hub, so there is always a way there. A Home
+press inside the app sends it no event either; Tizen only relaunches it quietly (`entry_point=smarthub_key`,
+`SkipReload=Yes`), so the app looks at its requested app control while it's showing and goes to the Home tab.
 
 **A module doesn't show up.** Look under the gear → Connections. "On · Missing …" names what's lacking. A setting
 changed on the TV wins over the file until the file changes; see [How settings work](modules.md#how-settings-work).

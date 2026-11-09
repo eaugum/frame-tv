@@ -55,6 +55,9 @@ var TV = (function () {
     'org.tizen.globoplayapp': 'Globoplay'
   };
 
+  // Smart Hub, where Back on the first screen goes (Tizen 6.5; older TVs fall back to hiding the app).
+  var SAMSUNG_HUB = 'com.samsung.tv.csfs';
+
   // Samsung's settings menu on Tizen 3, which answers no "settings" app control.
   var SAMSUNG_MENU = 'org.tizen.menu';
 
@@ -109,6 +112,40 @@ var TV = (function () {
     if (icon && icon.indexOf('://') < 0) icon = 'file://' + icon;
     if (SAMSUNG_ICONS[a.id]) icon = SAMSUNG_ICONS[a.id];
     return {id: a.id, title: SAMSUNG_TITLES[a.id] || a.name || a.id, icon: icon, color: ''};
+  }
+
+  // The Home key, when this app is the TV's Home (AUG-1481): Tizen relaunches it with SkipReload and fires no event,
+  // so only the requested app control changes. Poll it while showing; after a press, relaunch ourselves with a mark
+  // (and SkipReload, so the page stays) so that the next press is a change too.
+  var homeFns = [], homeSeen = null;
+
+  function requested() {
+    try {
+      var r = window.tizen.application.getCurrentApplication().getRequestedAppControl(), c = r && r.appControl;
+      var s = (r && r.callerAppId) || '';
+      if (c && c.data) for (var i = 0; i < c.data.length; i++) s += '|' + c.data[i].key + '=' + c.data[i].value.join(',');
+      return s;
+    } catch (e) { return ''; }
+  }
+
+  function rearmHome() {
+    try {
+      var app = window.tizen.application, self = app.getCurrentApplication().appInfo.id;
+      var data = [new window.tizen.ApplicationControlData('frametv_home', [String(Date.now())]),
+                  new window.tizen.ApplicationControlData('SkipReload', ['Yes'])];
+      var control = new window.tizen.ApplicationControl('http://tizen.org/appcontrol/operation/default', null, null, null, data);
+      app.launchAppControl(control, self, function () { homeSeen = requested(); }, function () {});
+    } catch (e) {}
+  }
+
+  function watchHome() {
+    if (document.hidden) return;
+    var s = requested();
+    if (homeSeen === null || s === homeSeen) { homeSeen = s; return; }
+    homeSeen = s;
+    if (s.indexOf('|entry_point=smarthub_key') < 0) return;
+    for (var i = 0; i < homeFns.length; i++) homeFns[i]();
+    rearmHome();
   }
 
   function samsungLaunch(id, done) {
@@ -222,10 +259,22 @@ var TV = (function () {
     /** f(id, what, ok) after each launch, deep link or settings. */
     onOpen: function (f) { openers.push(f); },
 
-    /** Back on the first screen: back to wherever the person came from. */
+    /** f() when the remote's Home key brings this app up (only where it is the TV's Home). */
+    onHome: function (f) {
+      homeFns.push(f);
+      if (samsung && homeFns.length === 1) setInterval(watchHome, 300);
+    },
+
+    /**
+     * Back on the first screen: Smart Hub. When this app is the TV's Home there is nothing behind it, so hiding could
+     * leave a black screen; where Smart Hub can't be opened, hide as before.
+     */
     back: function () {
       if (!samsung) return;
-      try { window.tizen.application.getCurrentApplication().hide(); } catch (e) {}
+      samsungLaunch(SAMSUNG_HUB, function (ok) {
+        if (ok) return;
+        try { window.tizen.application.getCurrentApplication().hide(); } catch (e) {}
+      });
     },
 
     /** The TV's time zone ("Europe/Oslo"), or ''. */

@@ -4366,6 +4366,7 @@
 
   window.addEventListener('resize', fit);
   window.addEventListener('appcontrol', reopened);   // opened again while running
+  TV.onHome(function () { reset(); update(); });   // the Home key, where this app is the TV's Home
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) { hideSaver(); clearTimeout(heroTimer); return; }
     idleAt = Date.now();
