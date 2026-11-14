@@ -12,8 +12,10 @@ All of it is listed in [`tools/root/tv/frame.sh`](../tools/root/tv/frame.sh):
 - **42 apps turned off** in the TV's app registry: ACR and viewing analysis, ads, analytics, voice assistants
   (Bixby, Alexa, Google Assistant, wake words), context suggestions, Samsung TV Plus, Gaming Hub, Samsung Health.
 - **Four preferences off:** voice recognition, assistant prelaunch, TV Plus autorun, preloading apps by country.
-- **Five services kept from starting** with Samsung's own stop files: PISA, canalysis, the two context-aware services
-  and TV Plus's provider.
+- **Four services kept from starting** with Samsung's own stop files: PISA, canalysis and the two context-aware
+  services. TV Plus's provider (`slive-provider-daemon`) is left running: with it stopped, the TV restarts every time
+  it should go to standby, and after a few rounds it switches off completely and drops off the network, so Home
+  Assistant can't turn it on.
 - **The Home button** opens Frame TV (see [Troubleshooting](troubleshooting.md#on-the-tv)). On the tested firmware this
   also makes the TV start in Frame TV; it still turns on in Art Mode.
 - **Step C:** four services that watch the network and report from the TV (`wifi-presence`, `kpi-logging`,

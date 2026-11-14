@@ -63,13 +63,14 @@ db/menu/autorun_tv_plus bool 0
 db/was/preload_by_country string false
 '
 
-# Services kept from starting by Samsung's own stop-file condition: unit, marker file in $MARKERS.
+# Services kept from starting by Samsung's own stop-file condition: unit, marker file in $MARKERS. Not
+# slive-provider-daemon (TV Plus): with it stopped, the TV restarts instead of going to standby and then switches off
+# completely, off the network, so Home Assistant can't turn it on (found 2026-11-14).
 STOPS='
 pisa-service.service pisa-service
 canalysis-service.service canalysis-daemon
 com.samsung.tv.context-aware-service.service com.samsung.tv.context-aware-service
 com.samsung.tv.context-aware-agent.service com.samsung.tv.context-aware-agent
-slive-provider-daemon.service slive-provider-daemon
 '
 
 # Home and startup keys; setting the main operation moves the last two with it on this firmware.
