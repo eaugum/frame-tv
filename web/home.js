@@ -930,13 +930,21 @@
     el('div', 'ring', c);
   }
 
+  function watchingLane(id, title, items, count) {
+    return {id: id, title: title, count: count, items: items.map(function (w) {
+      return {draw: function (n) { watchingItem(w, n); }, hero: heroOf(w, title), run: function () { openTitle(w); }, hold: w};
+    })};
+  }
+
   function buildLanes() {
     var out = [], h = Stasera.home();
     if (!calmMode()) {
-      if (h.watching.length) {
-        out.push({id: 'watching', title: tr('Watching'), count: h.watchingCount, items: h.watching.map(function (w) {
-          return {draw: function (n) { watchingItem(w, n); }, hero: heroOf(w, tr('Watching')), run: function () { openTitle(w); }, hold: w};
-        })});
+      // As Stasera's Home (AUG-1718): Watching, Not Watched for a While, New Season. An older Stasera sends one list.
+      var sh = h.shelves, pick = function (ix) { return ix.map(function (i) { return h.watching[i]; }); };
+      var rows = sh ? [['watching', tr('Watching'), pick(sh.watching)], ['stale', tr('Not Watched for a While'), pick(sh.stale)],
+        ['newSeason', tr('New Season'), pick(sh.newSeason)]] : [['watching', tr('Watching'), h.watching]];
+      for (var r = 0; r < rows.length; r++) {
+        if (rows[r][2].length) out.push(watchingLane(rows[r][0], rows[r][1], rows[r][2], sh ? rows[r][2].length : h.watchingCount));
       }
       if (h.wantToStart.length) {
         out.push({id: 'want', title: tr('Want to Start'), items: h.wantToStart.map(function (w) {

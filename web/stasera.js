@@ -16,7 +16,7 @@ var Stasera = (function () {
   var ON = !!BASE && Modules.on('stasera');
   var TOKEN = 'fmtv.stasera.token', CACHE = 'fmtv.stasera.home2';
   var EVERY = 5 * 60000, POLL = 3000;
-  var EMPTY = {watching: [], watchingCount: 0, wantToStart: [], movies: [], friends: [], stats: null};
+  var EMPTY = {watching: [], watchingCount: 0, shelves: null, wantToStart: [], movies: [], friends: [], stats: null};
 
   var token = null, data = EMPTY, at = 0, name = '', hello = null, askedFor = '', askedMe = false;
   try {
@@ -137,6 +137,16 @@ var Stasera = (function () {
   /** The TV's date, hour and language: a new one asks again, since Hjem's greeting can change with it. */
   function hour() { return today() + 'T' + new Date().getHours() + ':' + lang(); }
 
+  /**
+   * Stasera's split of Watching into Home's rows (AUG-1718): {watching, stale, newSeason}, each a list of indexes into
+   * watching. null from a Stasera without it; then Watching stays one row.
+   */
+  function shelvesOf(s, n) {
+    if (!s || typeof s !== 'object') return null;
+    function ix(a) { return list(a).filter(function (i) { return typeof i === 'number' && i >= 0 && i < n; }); }
+    return {watching: ix(s.watching), stale: ix(s.stale), newSeason: ix(s.newSeason)};
+  }
+
   function refresh(force) {
     if (!ON || !token || fetching) return;
     var t = Date.now(), h = hour();
@@ -149,6 +159,7 @@ var Stasera = (function () {
       if (status !== 200 || !json) { fetching = false; failedAt = Date.now(); return; }   // keep the last answer
       data = {
         watching: list(json.watching), watchingCount: json.watchingCount || list(json.watching).length,
+        shelves: shelvesOf(json.watchingShelves, list(json.watching).length),
         wantToStart: list(json.wantToStart), movies: list(json.movies), friends: list(json.friends), stats: json.stats || null
       };
       at = Date.now();
@@ -419,7 +430,7 @@ var Stasera = (function () {
     unlink: forget,
     /** The code waiting for approval ({code, url, expiresAt}), or null. */
     pairing: function () { return pairing; },
-    /** The last answer: {watching, watchingCount, wantToStart, movies, friends, stats}. */
+    /** The last answer: {watching, watchingCount, shelves, wantToStart, movies, friends, stats}. */
     home: function () { return ON && token ? data : EMPTY; },
     service: service,
     search: search,
