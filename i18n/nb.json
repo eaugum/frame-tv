@@ -319,7 +319,7 @@
  "plural|one:{n} light on|other:{n} lights on": "one:{n} lys på|other:{n} lys på",
  "plural|one:{n} result|other:{n} results": "one:{n} treff|other:{n} treff",
  "plural|one:{n} season|other:{n} seasons": "one:{n} sesong|other:{n} sesonger",
- "plural|one:{n} show in progress|other:{n} shows in progress": "one:{n} serie på gang|other:{n} serier på gang",
+ "plural|one:{n} title in progress|other:{n} titles in progress": "one:{n} tittel på gang|other:{n} titler på gang",
  "quote|“{text}”": "«{text}»",
  "runs locally": "kjøres lokalt",
  "shelf|Off": "Av",

@@ -876,18 +876,20 @@
     }
   }
 
+  /** A show's next episode, or a movie we've started (year and runtime instead). */
   function watchingItem(item, node) {
-    var c = card('big', node), still = item.stillPath;
+    var c = card('big', node), still = item.stillPath, movie = item.kind === 'movie';
     cardImage(c, image(still || wide(item, !!item.logoPath), 'w780'));
     el('div', 'shade', c);
     if (item.logoPath) logoOrTitle(c, item);
     var t = el('div', 'btext', c);
     el('b', '', t, item.logoPath ? '' : item.title);
-    el('span', '', t, ep(item) + (episodeName(item) ? ' · ' + episodeName(item) : ''));
+    if (movie) el('span', '', t, [item.year ? String(item.year) : '', runtime(item.runtime)].filter(Boolean).join(' · '));
+    else el('span', '', t, ep(item) + (episodeName(item) ? ' · ' + episodeName(item) : ''));
     if (item.total) transform(el('i', '', el('div', 'progress', c)), 'scaleX(' + (item.watched / item.total).toFixed(3) + ')');
     if (isNew(item)) el('div', 'badge', c, tr('badge|New'));
     el('div', 'ring', c);
-    var sub = [left(item)];
+    var sub = movie ? [tr('Movie')] : [left(item)];
     if (serviceName(item)) sub.push(serviceName(item));
     var cap = el('div', 'cap', node);
     el('span', '', cap, sub.join(' · '));
@@ -1248,7 +1250,7 @@
     el('div', 'label', t, tr('Stats'));
     var n = el('div', 'mini', t, String(Math.round(minutes / 60)));
     el('small', '', n, trf('h in {month}', {month: formatDate('format|MMMM', Date.now())}));
-    el('div', 'sub', t, plural('plural|one:{n} show in progress|other:{n} shows in progress', h.watchingCount));
+    el('div', 'sub', t, plural('plural|one:{n} title in progress|other:{n} titles in progress', h.watchingCount));
     ring(t);
   }
 

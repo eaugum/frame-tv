@@ -319,7 +319,7 @@
  "plural|one:{n} light on|other:{n} lights on": "one:{n} light on|other:{n} lights on",
  "plural|one:{n} result|other:{n} results": "one:{n} result|other:{n} results",
  "plural|one:{n} season|other:{n} seasons": "one:{n} season|other:{n} seasons",
- "plural|one:{n} show in progress|other:{n} shows in progress": "one:{n} show in progress|other:{n} shows in progress",
+ "plural|one:{n} title in progress|other:{n} titles in progress": "one:{n} title in progress|other:{n} titles in progress",
  "quote|“{text}”": "“{text}”",
  "runs locally": "runs locally",
  "shelf|Off": "Off",
