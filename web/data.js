@@ -24,7 +24,7 @@ var Settings = (function () {
     homeAssistantLights: [], homeAssistantPower: [], homeAssistantLaundry: [], homeAssistantGuestWifi: [],
     spotify: false, spotifyClientId: '', spotifyRefreshToken: '',
     art: false, artUrl: '', artKey: '',
-    youtubeRefreshToken: '', staseraToken: '', shelf: null, youtubePlaylist: '', saverMinutes: 15, saverEvery: 5
+    youtubeRefreshToken: '', staseraToken: '', shelf: null, youtubeShelf: null, youtubePlaylist: '', saverMinutes: 15, saverEvery: 5
   };
   var saved = {};   // key: {v: the TV's value, file: what config.js said then (JSON)}
   try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) {}
@@ -120,7 +120,7 @@ var Prefs = (function () {
   function save() { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (e) {} }
   function pick(name, fallback) { return v[name] === undefined ? fallback : v[name]; }
   // These are in config.properties too, so they're kept in Settings.
-  var SETTINGS = ['language', 'temperature', 'shelf', 'youtubePlaylist', 'saverMinutes', 'saverEvery'];
+  var SETTINGS = ['language', 'temperature', 'shelf', 'youtubeShelf', 'youtubePlaylist', 'saverMinutes', 'saverEvery'];
   return {
     version: 0,
     language: function () { return Settings.get('language'); },
@@ -128,6 +128,8 @@ var Prefs = (function () {
     theme: function () { return pick('theme', 'auto'); },
     weather: function () { return pick('weather', true); },
     shelf: function () { return Settings.get('shelf'); },
+    /** The apps on the YouTube tab (ids, in order), or null for the YouTube app alone. */
+    youtubeShelf: function () { return Settings.get('youtubeShelf'); },
     /** The apps list of the build that last set the shelf, so a new one wins once over the TV's choice. */
     shelfConfig: function () { return pick('shelfConfig', ''); },
     /** The YouTube playlist picked in Home Settings (its id), or '' for the one called Frame TV. */

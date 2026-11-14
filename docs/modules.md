@@ -244,7 +244,8 @@ These are picked on the TV. "Upload config" fills them in, so you rarely need to
 
 | Setting | What | Where on the TV |
 |---|---|---|
-| `shelf` | The apps on Home, comma-separated app ids, in order. Empty means the default list in [features.md](features.md), those that are installed | The gear → Apps |
+| `shelf` | The apps on Home and the TV tab, comma-separated app ids, in order. Empty means the default list in [features.md](features.md), those that are installed | The gear → Apps → Apps on the TV tab |
+| `youtube_shelf` | The apps at the bottom of the YouTube tab, comma-separated app ids, in order. Empty means the YouTube app | The gear → Apps → Apps on the YouTube tab |
 | `hide_apps` | Apps left out of Home and All Apps | The gear → Apps |
 | `home_assistant_scenes`, `_lights`, `_power`, `_laundry`, `_guest_wifi` | Home Assistant's entities | The gear → Connections → Home Assistant; see [home-assistant.md](home-assistant.md#what-the-tab-shows) |
 | `saver_minutes` | Idle minutes before the screensaver: 0 is never, empty is 15 | The gear → Screensaver and Art Mode |

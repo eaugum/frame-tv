@@ -276,7 +276,7 @@
     }
   }
 
-  var apps = [], shelf = [], others = [];
+  var apps = [], shelf = [], others = [], ytShelf = [];   // ytShelf: the Apps row on the YouTube tab
 
   /** apps in config.properties: the shelf in that order, by id or name (part of it). */
   var WANTED = Settings.get('apps').map(function (s) { return s.toLowerCase(); });
@@ -304,11 +304,8 @@
       Prefs.set('shelfConfig', WANTED.join(','));
     }
     var chosen = Prefs.shelf(), out = [], i, a;
-    if (chosen) {
-      for (i = 0; i < chosen.length; i++) {
-        for (var j = 0; j < apps.length; j++) if (apps[j].id === chosen[i]) out.push(apps[j]);
-      }
-    } else {
+    if (chosen) out = byIds(chosen);
+    else {
       var names = WANTED.length ? WANTED : LIBRARY;
       for (i = 0; i < names.length; i++) {
         a = WANTED.length ? wantedApp(names[i], out) : appByKey(names[i]);
@@ -318,6 +315,17 @@
     }
     shelf = out;
     others = apps.filter(function (x) { return shelf.indexOf(x) < 0; });
+    ytShelf = byIds(Prefs.youtubeShelf()) || [appByKey('youtube')].filter(Boolean);
+  }
+
+  /** The installed apps of a list of ids, in its order; null without a list. */
+  function byIds(ids) {
+    if (!ids) return null;
+    var out = [];
+    for (var i = 0; i < ids.length; i++) {
+      for (var j = 0; j < apps.length; j++) if (apps[j].id === ids[i]) out.push(apps[j]);
+    }
+    return out;
   }
 
 
@@ -950,12 +958,16 @@
       }
     }
     // Only the app library: the rest is in All Apps, from the tab bar.
-    var appItems = shelf.map(function (a) {
+    if (shelf.length) out.push(appLane(shelf));
+    return out;
+  }
+
+  /** The Apps row at the bottom of the TV tab and the YouTube tab. */
+  function appLane(list) {
+    return {id: 'apps', title: tr('Apps'), items: list.map(function (a) {
       return {draw: function (n) { appItem(a, n); }, hero: {kicker: tr('Apps'), title: a.title, meta: [tr('Open the app')]},
         run: launcher(a.id, a.title)};
-    });
-    if (appItems.length) out.push({id: 'apps', title: tr('Apps'), items: appItems});
-    return out;
+    })};
   }
 
   /** YouTube's rows: our playlist, and what's new from the subscriptions. */
@@ -971,6 +983,7 @@
       var note = YouTube.sample() ? tr('Sample data: sign in to YouTube in Home Settings') : '';
       out.push({id: 'subs', title: tr('New from your subscriptions'), note: note, items: items(videos, tr('New video'))});
     }
+    if (ytShelf.length) out.push(appLane(ytShelf));
     return out;
   }
 
@@ -2953,9 +2966,11 @@
   PAGES.apps = function () {
     return [
       {label: tr('All Apps'), value: '›', allApps: true, step: function (d) { if (d >= 0) openApps(); }},
-      {label: tr('Shelf'), value: '›', shelf: true, step: function (d) { if (d >= 0) openShelfEdit(); }},
+      {label: tr('Apps on the TV tab'), value: '›', shelf: 'shelf', step: function (d) { if (d >= 0) openShelfEdit('shelf'); }}
+    ].concat(YouTube.enabled() ? [{label: tr('Apps on the YouTube tab'), value: '›', shelf: 'youtubeShelf',
+      step: function (d) { if (d >= 0) openShelfEdit('youtubeShelf'); }}] : []).concat([
       pageRow(tr('Hidden apps'), allApps.filter(hidden).length || tr('None'), 'hidden')
-    ];
+    ]);
   };
 
   function saverValue() {
@@ -3690,10 +3705,12 @@
     updateFocus();
   }
 
-  // MARK: - Shelf editor: which apps, in what order
+  // MARK: - Shelf editor: which apps, in what order, for Home and the TV tab or for the YouTube tab
+
+  var editing = 'shelf';   // the setting the editor changes: 'shelf' or 'youtubeShelf'
 
   function editList() {
-    var ids = shelf.map(function (a) { return a.id; });
+    var ids = (editing === 'shelf' ? shelf : ytShelf).map(function (a) { return a.id; });
     return {ids: ids, rows: apps.slice().sort(function (a, b) {
       var ia = ids.indexOf(a.id), ib = ids.indexOf(b.id);
       if (ia >= 0 || ib >= 0) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
@@ -3706,7 +3723,7 @@
     box.innerHTML = '';
     var title = el('div', 'title', box);
     sym('apps', title);
-    title.appendChild(document.createTextNode(tr('Shelf')));
+    title.appendChild(document.createTextNode(editing === 'shelf' ? tr('Apps on the TV tab') : tr('Apps on the YouTube tab')));
     var list = el('div', 'list', box), holder = el('div', 'rows', list);
     list.style.height = Math.min(e.rows.length, 7) * 78 + 'px';
     for (var i = 0; i < e.rows.length; i++) {
@@ -3719,7 +3736,8 @@
     updateFocus();
   }
 
-  function openShelfEdit() {
+  function openShelfEdit(which) {
+    editing = which;
     setClass($('settings'), 'open', false);
     st.zone = Z.EDIT;
     st.edit = 0;
@@ -3741,7 +3759,7 @@
       ids.splice(at, 1);
       ids.splice(to, 0, app.id);
     }
-    Prefs.set('shelf', ids);
+    Prefs.set(editing, ids);
     pickShelf();
     renderTV();
     renderHome();
@@ -3928,7 +3946,7 @@
     if (st.zone === Z.EDIT) {
       setClass($('shelfedit'), 'open', false);
       openSettings();
-      for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].shelf) st.row = i;
+      for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].shelf === editing) st.row = i;
       updateFocus();
       return;
     }
