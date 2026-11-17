@@ -206,6 +206,8 @@ added under the app's user management first.
 **What it gives:** a tile on Home with the picture's name and the mode, and a button in the tab bar. OK on the tile turns on
 Art Mode, and holding OK gives a new picture. When the screensaver starts, the TV goes into Art Mode. What's on the wall
 is decided by Frame Art, and everything else about the pictures is set there.
+It also tells the add-on what Frame TV does, for its Debug tab, and when it starts, what only the TV itself can read
+(the firmware, the Tizen and Chromium versions, memory, storage and the Wi-Fi signal) for its TV tab.
 
 **What you need:** Home Assistant OS or Supervised, with the Frame Art add-on installed and running. See
 [Frame Art's documentation](https://github.com/eaugum/frame-art/blob/main/frame_art/DOCS.md).

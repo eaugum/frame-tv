@@ -8,6 +8,9 @@
  * It also tells the add-on's event log what Frame TV does (POST /event, AUG-1523): started, hidden and shown, what it
  * opened, the screensaver and errors. They wait in localStorage while the add-on doesn't answer (the TV going off
  * hides the app before a request gets out), and go when it does.
+ *
+ * When it starts on the TV, it reports what only the TV itself can read (POST /tv/report, AUG-1722): the firmware, the
+ * Tizen and Chromium versions, memory, storage and the Wi-Fi signal, for the add-on's TV tab.
  */
 var Art = (function () {
   'use strict';
@@ -94,6 +97,48 @@ var Art = (function () {
     });
   }
 
+  // MARK: - The report for the TV tab (AUG-1722)
+
+  /** What the TV says about itself; each part on its own, since some aren't there on every TV. done(report). */
+  function readTV(done) {
+    var r = {}, waiting = 0, over = false;
+    function finish() { if (!over) { over = true; done(r); } }
+    function ask(property, use) {
+      waiting++;
+      try {
+        window.tizen.systeminfo.getPropertyValue(property, function (v) {
+          try { use(v); } catch (e) {}
+          if (--waiting === 0) finish();
+        }, function () { if (--waiting === 0) finish(); });
+      } catch (e) { waiting--; }
+    }
+    try { r.app_version = window.tizen.application.getCurrentApplication().appInfo.version; } catch (e) {}
+    var chrome = /Chrome\/(\d+)/.exec(navigator.userAgent);
+    if (chrome) r.browser = 'Chromium ' + chrome[1];
+    try { r.tizen = window.tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version'); } catch (e) {}
+    try {
+      r.memory_free = window.tizen.systeminfo.getAvailableMemory();
+      r.memory_total = window.tizen.systeminfo.getTotalMemory();
+    } catch (e) {}
+    ask('BUILD', function (v) { r.firmware = v.buildVersion; r.model = v.model; });
+    ask('STORAGE', function (v) {
+      for (var i = 0; i < v.units.length; i++) {
+        if (v.units[i].type === 'INTERNAL') {
+          r.storage_free = v.units[i].availableCapacity;
+          r.storage_total = v.units[i].capacity;
+        }
+      }
+    });
+    ask('WIFI_NETWORK', function (v) { if (v.status === 'ON') r.wifi_signal = v.signalStrength; });
+    if (waiting === 0) finish();
+    setTimeout(finish, 5000);
+  }
+
+  function report() {
+    if (!ON || SAMPLE || !URL || TV.name === 'browser' || !window.tizen) return;
+    readTV(function (r) { request('POST', '/tv/report', 20000, function () {}, r); });
+  }
+
   function refresh() {
     if (!ON || SAMPLE || !URL) return;
     send();
@@ -113,7 +158,7 @@ var Art = (function () {
     });
   }
 
-  if (ON && URL) { refresh(); setInterval(refresh, EVERY); }
+  if (ON && URL) { refresh(); setInterval(refresh, EVERY); report(); }
 
   return {
     enabled: function () { return ON && (!!URL || SAMPLE); },
