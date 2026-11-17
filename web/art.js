@@ -113,7 +113,8 @@ var Art = (function () {
       } catch (e) { waiting--; }
     }
     try { r.app_version = window.tizen.application.getCurrentApplication().appInfo.version; } catch (e) {}
-    var chrome = /Chrome\/(\d+)/.exec(navigator.userAgent);
+    // Tizen's says "(KHTML, like Gecko) 85.0.4183.93/6.5 TV" rather than "Chrome/85..."
+    var chrome = /(?:Chrome\/|Gecko\) )(\d+)\.\d+\.\d+\.\d+/.exec(navigator.userAgent);
     if (chrome) r.browser = 'Chromium ' + chrome[1];
     try { r.tizen = window.tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version'); } catch (e) {}
     try {
