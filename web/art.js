@@ -9,8 +9,9 @@
  * opened, the screensaver and errors. They wait in localStorage while the add-on doesn't answer (the TV going off
  * hides the app before a request gets out), and go when it does.
  *
- * When it starts on the TV, it reports what only the TV itself can read (POST /tv/report, AUG-1722): the firmware, the
- * Tizen and Chromium versions, memory, storage and the Wi-Fi signal, for the add-on's TV tab.
+ * When it starts on the TV, and every hour after, it reports what only the TV itself can read (POST /tv/report,
+ * AUG-1722): the firmware, the Tizen and Chromium versions, memory, storage and the Wi-Fi signal, for the add-on's TV
+ * tab; and, from the small service beside it (tizen/service/), the TV's own ECO, power and HDMI-CEC settings.
  */
 var Art = (function () {
   'use strict';
@@ -20,6 +21,8 @@ var Art = (function () {
   var ON = Modules.on('art');
   var SAMPLE = ON && !URL && TV.name === 'browser';
   var EVERY = 5 * 60000;
+  var REPORT_EVERY = 60 * 60000;
+  var SERVICE = 'org.frametv.service';
 
   var status = SAMPLE ? {showing: 'nasjonalmuseet: The Day After, Edvard Munch', interval_minutes: 60} : null;
   var busy = false, listeners = [];
@@ -131,8 +134,40 @@ var Art = (function () {
       }
     });
     ask('WIFI_NETWORK', function (v) { if (v.status === 'ON') r.wifi_signal = v.signalStrength; });
+    askService(r, function (n) { waiting += n; }, function () { if (--waiting === 0) finish(); });
     if (waiting === 0) finish();
-    setTimeout(finish, 5000);
+    setTimeout(finish, 8000);
+  }
+
+  /** The service's answer as r.settings: {vconf key: value}, with the JSON strings among them parsed, so the report
+   * stays small. Not installed (or an older TV): nothing. */
+  function askService(r, start, end) {
+    var control;
+    try {
+      control = new window.tizen.ApplicationControl('http://tizen.org/appcontrol/operation/default', null, null, null,
+        []);
+    } catch (e) { return; }
+    var over = false;
+    function done() { if (!over) { over = true; end(); } }
+    start(1);
+    function got(data) {
+      for (var i = 0; i < (data || []).length; i++) {
+        if (data[i].key !== 'settings') continue;
+        try {
+          var all = JSON.parse(data[i].value[0]);
+          for (var k in all) {
+            if (typeof all[k] === 'string' && /^\s*[\[{]/.test(all[k])) {
+              try { all[k] = JSON.parse(all[k]); } catch (e) {}
+            }
+          }
+          r.settings = all;
+        } catch (e) {}
+      }
+      done();
+    }
+    try {
+      window.tizen.application.launchAppControl(control, SERVICE, null, done, {onsuccess: got, onfailure: done});
+    } catch (e) { done(); }
   }
 
   function report() {
@@ -159,7 +194,7 @@ var Art = (function () {
     });
   }
 
-  if (ON && URL) { refresh(); setInterval(refresh, EVERY); report(); }
+  if (ON && URL) { refresh(); setInterval(refresh, EVERY); report(); setInterval(report, REPORT_EVERY); }
 
   return {
     enabled: function () { return ON && (!!URL || SAMPLE); },

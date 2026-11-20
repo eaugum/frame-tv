@@ -21,6 +21,17 @@ with another file.
 
 The first time, `python3 tizen/build.py` makes `config.properties` (gitignored) from `config.example.properties`.
 
+### The service beside Frame TV
+
+A web app can't read the TV's own settings, so `tizen/service/` is a small .NET service, `FrameTVService.tpk`
+(`org.frametv.service`), that can: ECO, power (when and why the TV last went off, panel time), HDMI-CEC and Art
+Mode's learned brightness. These keys need only the privilege every app has, so no root. Frame TV launches it when it
+starts and every hour (`web/art.js`), gets the values back as the launch's reply, and sends them to Frame Art with the
+rest of its report (`POST /tv/report`, `settings`) for the TV tab.
+
+`build.py --sign` builds and signs it with the same profile when .NET 6 is in `dotnet/` (`tizen/get-tools.sh` fetches
+it); `install.py` installs it first, and `--uninstall` removes it too. Without it, Frame TV works as before.
+
 ### The certificate
 
 Keep `tizen-studio-data/keystore/author/frametv.p12` and its password safe (in a password manager). Updates must be

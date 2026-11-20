@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest package="org.frametv.service" version="1.0.0" api-version="6" xmlns="http://tizen.org/ns/packages">
+  <profile name="tv" />
+  <service-application appid="org.frametv.service" exec="FrameTVService.dll" type="dotnet" multiple="false"
+                       taskmanage="false" nodisplay="true" auto-restart="false" on-boot="false">
+    <label>Frame TV service</label>
+    <icon>icon.png</icon>
+  </service-application>
+</manifest>

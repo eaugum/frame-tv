@@ -1,0 +1,10 @@
+<Project Sdk="Tizen.NET.Sdk/1.1.9">
+  <!-- The TV's own settings for Frame Art's TV tab (AUG-1722): a small .NET service beside the web app, since a web
+       app has no way to read them. Built and signed by tizen/build.py. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>tizen80</TargetFramework>
+    <DebugType>none</DebugType>
+    <AssemblyName>FrameTVService</AssemblyName>
+  </PropertyGroup>
+</Project>

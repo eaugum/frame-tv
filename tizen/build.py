@@ -10,6 +10,8 @@
 
 The home screen (web/) with tizen/config.xml and tizen/icon.png, in a zip as Tizen Studio makes it. TVs only install
 signed packages: --sign uses `tizen package` from tizen-studio/ (or Tizen Studio elsewhere) with a profile made there.
+With --sign it also builds FrameTVService.tpk (tizen/service/, the TV's own settings for Frame Art's TV tab) when .NET 6
+is there (tizen/get-tools.sh); without it Frame TV works as before, only the TV tab has less.
 """
 import os
 import re
@@ -25,6 +27,7 @@ import webapp  # noqa: E402
 
 OUT = os.path.join(ROOT, 'out', 'tizen')
 WGT = os.path.join(ROOT, 'FrameTV.wgt')
+TPK = os.path.join(ROOT, 'FrameTVService.tpk')
 
 
 def tizen_cli():
@@ -39,25 +42,64 @@ def tizen_cli():
     return shutil.which('tizen')
 
 
-def sign(profile):
+def sign(profile, package=WGT):
     cli = tizen_cli()
     if not cli:
         sys.exit('Signing needs Samsung\'s Tizen tools (tizen-studio/ in this folder, or Tizen Studio). Not found: set '
                  'TIZEN_STUDIO to where they are installed.')
+    kind = package.rsplit('.', 1)[1]
     out = tempfile.mkdtemp()
     try:
-        run = subprocess.run([cli, 'package', '-t', 'wgt', '-s', profile, '-o', out, '--', WGT],
+        run = subprocess.run([cli, 'package', '-t', kind, '-s', profile, '-o', out, '--', package],
                              capture_output=True, text=True)
-        made = [n for n in os.listdir(out) if n.endswith('.wgt')]
+        made = [n for n in os.listdir(out) if n.endswith('.' + kind)]
         if run.returncode != 0 or not made:
             sys.exit('`tizen package` didn\'t sign it:\n' + (run.stdout + run.stderr).strip())
-        shutil.move(os.path.join(out, made[0]), WGT)
+        shutil.move(os.path.join(out, made[0]), package)
     finally:
         shutil.rmtree(out, ignore_errors=True)
-    with zipfile.ZipFile(WGT) as z:
+    with zipfile.ZipFile(package) as z:
         names = z.namelist()
     if 'author-signature.xml' not in names or 'signature1.xml' not in names:
         sys.exit('The package came back without its signatures.')
+
+
+def dotnet():
+    """The .NET 6 SDK's dotnet (tizen/get-tools.sh puts it in dotnet/), or None."""
+    for path in (os.environ.get('DOTNET', ''), os.path.join(ROOT, 'dotnet', 'dotnet'),
+                 os.path.join(ROOT, 'tools', 'root', 'work', 'dotnet', 'dotnet')):
+        if path and os.path.exists(path):
+            return path
+    return shutil.which('dotnet')
+
+
+def build_service(profile):
+    """FrameTVService.tpk, signed like Frame TV; None when there's no .NET to build it with."""
+    cli = dotnet()
+    if not cli:
+        if os.path.exists(TPK):
+            os.remove(TPK)
+        return None
+    work = tempfile.mkdtemp()
+    try:
+        src = os.path.join(work, 'service')
+        shutil.copytree(os.path.join(ROOT, 'tizen', 'service'), src)
+        os.makedirs(os.path.join(src, 'shared', 'res'))
+        shutil.copy(os.path.join(ROOT, 'tizen', 'icon.png'), os.path.join(src, 'shared', 'res', 'icon.png'))
+        env = dict(os.environ, DOTNET_ROOT=os.path.dirname(os.path.realpath(cli)), DOTNET_CLI_TELEMETRY_OPTOUT='1',
+                   DOTNET_NOLOGO='1')
+        run = subprocess.run([cli, 'build', '-c', 'Release'], cwd=src, env=env, capture_output=True, text=True)
+        made = [os.path.join(d, n) for d, _, names in os.walk(os.path.join(src, 'bin')) for n in names
+                if n.endswith('.tpk')] if run.returncode == 0 else []
+        if not made:
+            sys.exit('`dotnet build` didn\'t build the service:\n' + (run.stdout + run.stderr).strip()[-3000:])
+        shutil.move(made[0], TPK)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    sign(profile, TPK)
+    with open(os.path.join(ROOT, 'tizen', 'service', 'tizen-manifest.xml'), encoding='utf-8') as f:
+        version = re.search(r'<manifest [^>]*?\sversion="([^"]+)"', f.read()).group(1)
+    return version
 
 
 def build(preview, config, profile):
@@ -81,6 +123,10 @@ def build(preview, config, profile):
         print('Preview: open out/tizen/index.html (or serve out/tizen) in a browser.')
     print('Built %s (%s %s, %d KB, %s)' % (os.path.basename(WGT), app_id, version, os.path.getsize(WGT) // 1024,
                                            'signed with "%s"' % profile if profile else 'not signed'))
+    if profile:
+        service = build_service(profile)
+        print('Built %s (%s, %d KB)' % (os.path.basename(TPK), service, os.path.getsize(TPK) // 1024) if service else
+              'No .NET 6 (tizen/get-tools.sh), so no FrameTVService.tpk: the TV tab shows less.')
 
 
 if __name__ == '__main__':

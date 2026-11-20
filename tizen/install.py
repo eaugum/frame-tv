@@ -5,6 +5,9 @@
     python3 tizen/install.py 192.168.1.50 --uninstall  # remove it
     python3 tizen/install.py 192.168.1.50 mockups/KinoMockup.wgt   # another package (the mockups) the same way
 
+FrameTVService.tpk, the small service that reads the TV's own settings for Frame Art (tizen/service/), goes on and
+comes off with Frame TV when build.py made it.
+
 First build and sign it: python3 tizen/build.py --sign <profile> (see README.md). Before the first install, on the
 TV: open Apps, type 1 2 3 4 5 on the remote, turn Developer mode on with this computer's IP as Host PC IP, and
 restart the TV.
@@ -24,6 +27,8 @@ import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WGT = os.path.join(ROOT, 'FrameTV.wgt')
+TPK = os.path.join(ROOT, 'FrameTVService.tpk')
+SERVICE = 'org.frametv.service'
 PORT = 26101
 MAX_DATA = 4096   # what this side announces; sdbd keeps each packet within both sides' maximum
 ON_TV = 'Apps, Settings, Frame TV, Delete'   # removing it on the TV itself
@@ -179,6 +184,8 @@ def main():
                                          caps.get('platform_version', '?')))
 
     if uninstall:
+        if not other:
+            sdb.shell('0 vd_appuninstall ' + SERVICE, r'spend time', 120)
         out = sdb.shell('0 vd_appuninstall ' + package, r'spend time', 120).strip()
         if not re.search(r'uninstall completed', out):
             # Some TVs' sdbd refuses this command and answers nothing.
@@ -186,7 +193,15 @@ def main():
         print('Removed.')
         return
 
-    remote = caps.get('sdk_toolpath', '/home/owner/share/tmp/sdk_tools').rstrip('/') + '/' + os.path.basename(WGT)
+    folder = caps.get('sdk_toolpath', '/home/owner/share/tmp/sdk_tools').rstrip('/') + '/'
+    if not other and os.path.exists(TPK):
+        print('Installing the service ...')
+        with open(TPK, 'rb') as f:
+            sdb.push(folder + os.path.basename(TPK), f.read())
+        out = sdb.shell('0 vd_appinstall %s %s' % (SERVICE, folder + os.path.basename(TPK)), r'spend time', 120)
+        if not re.search(r'install completed', out):
+            sys.exit('The TV didn\'t install the service. It said:\n' + out.strip())
+    remote = folder + os.path.basename(WGT)
     with open(WGT, 'rb') as f:
         data = f.read()
     print('Copying the app to the TV ...')

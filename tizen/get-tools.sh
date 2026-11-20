@@ -1,10 +1,19 @@
 #!/bin/zsh
 # Fetches the parts of Samsung's Tizen tools that signing needs into tizen-studio/ (once). Samsung's own installer
 # stops on a Mac without Rosetta, since it brings an Intel Java; these packages run on any Java 17.
+# Also .NET 6 into dotnet/, for the small service beside Frame TV (tizen/service/).
 set -e
 R=${0:A:h:h}
 S=$R/tizen-studio
 REPO=https://download.tizen.org/sdk/tizenstudio/official
+
+if [[ ! -x $R/dotnet/dotnet ]]; then
+  echo "Fetching .NET 6..."
+  D=$(mktemp -d)
+  curl -fsSL https://dot.net/v1/dotnet-install.sh -o $D/dotnet-install.sh
+  bash $D/dotnet-install.sh --channel 6.0 --install-dir $R/dotnet --no-path
+  rm -rf $D
+fi
 [[ ! -e $S/tools/ide/bin/tizen ]] || { echo "The Tizen tools are already in $S."; exit 0; }
 
 JDK=
