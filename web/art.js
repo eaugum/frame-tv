@@ -61,12 +61,32 @@ var Art = (function () {
   var QUEUE = 'artEvents', MAX_QUEUE = 300, BATCH = 50, MAX_ERRORS = 20;
   var sending = false, errors = 0, made = 0;
 
+  /** The events waiting: only objects from a list; anything else stored there is left out. */
   function queued() {
-    try { return JSON.parse(localStorage.getItem(QUEUE)) || []; } catch (e) { return []; }
+    var q = null, out = [];
+    try { q = JSON.parse(localStorage.getItem(QUEUE)); } catch (e) {}
+    if (q instanceof Array) for (var i = 0; i < q.length; i++) if (q[i] && typeof q[i] === 'object') out.push(q[i]);
+    return out;
   }
 
   function keep(q) {
     try { localStorage.setItem(QUEUE, JSON.stringify(q.slice(-MAX_QUEUE))); } catch (e) {}
+  }
+
+  /** At most max UTF-16 units the add-on can encode as UTF-8 (AUG-1774): an emoji cut at the end is left out, and a
+   * lone half of one becomes U+FFFD. */
+  function clean(s, max) {
+    s = String(s || '').slice(0, max + 1).replace(/[\ud800-\udbff][\udc00-\udfff]|[\ud800-\udfff]/g, function (c) {
+      return c.length === 2 ? c : '\ufffd';
+    });
+    if (s.length <= max) return s;
+    return s.slice(0, /[\ud800-\udbff]/.test(s.charAt(max - 1)) ? max - 1 : max);
+  }
+
+  /** An event as it's queued and sent; also cleans one an older version queued. */
+  function entry(e) {
+    e = e || {};
+    return {n: e.n, at: e.at, kind: clean(e.kind, 40), detail: clean(e.detail, 300)};
   }
 
   /** Sends what's waiting, a batch at a time; what doesn't get through stays for the next try. */
@@ -74,6 +94,7 @@ var Art = (function () {
     if (sending || !ON || SAMPLE || !URL) return;
     var batch = queued().slice(0, BATCH);
     if (!batch.length) return;
+    for (var b = 0; b < batch.length; b++) batch[b] = entry(batch[b]);
     sending = true;
     request('POST', '/event', 20000, function (o, ok) {
       sending = false;
@@ -90,7 +111,7 @@ var Art = (function () {
   function event(kind, detail) {
     if (!ON || SAMPLE || !URL) return;
     var q = queued();
-    q.push({n: Date.now() + '.' + (made++), at: Date.now(), kind: kind, detail: String(detail || '').slice(0, 300)});
+    q.push(entry({n: Date.now() + '.' + (made++), at: Date.now(), kind: kind, detail: detail}));
     keep(q);
     send();
   }
