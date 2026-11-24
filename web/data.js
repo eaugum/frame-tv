@@ -156,9 +156,14 @@ var Data = (function () {
   function get(url, headers, done) {
     var x = new XMLHttpRequest();
     var over = false;
-    x.open('GET', url, true);
-    x.timeout = 10000;
-    for (var h in headers) if (headers.hasOwnProperty(h)) x.setRequestHeader(h, headers[h]);
+    try {
+      x.open('GET', url, true);
+      x.timeout = 10000;
+      for (var h in headers) if (headers.hasOwnProperty(h)) x.setRequestHeader(h, headers[h]);
+    } catch (e) {
+      setTimeout(function () { done(e); }, 0);
+      return;
+    }
     x.onreadystatechange = function () {
       if (x.readyState !== 4 || over) return;
       over = true;
@@ -168,7 +173,7 @@ var Data = (function () {
       done(null, json);
     };
     x.ontimeout = x.onerror = function () { if (!over) { over = true; done(new Error('no connection')); } };
-    x.send();
+    try { x.send(); } catch (e) { over = true; setTimeout(function () { done(e); }, 0); }
   }
 
   var listeners = [];
@@ -180,29 +185,40 @@ var Data = (function () {
   var weather = null, weatherAt = 0, fetchingWeather = false;
   (function () {
     var w = stored('weather');
-    if (w && w.place === PLACE) { weather = parseWeather(w.body); weatherAt = w.at; }
+    if (!w || w.place !== PLACE) return;
+    weather = parseWeather(w.body);
+    if (weather) weatherAt = number(w.at) || 0;
+    else { try { localStorage.removeItem('fmtv.weather'); } catch (e) {} }   // broken: drop it, ask again
   })();
+
+  // Open-Meteo's answer, also the one kept from an earlier start, is read with these: a value of another type is
+  // missing, and a list is a real one, cut short.
+  function number(v) { return typeof v === 'number' && isFinite(v) ? v : null; }
+  function list(v) { return Object.prototype.toString.call(v) === '[object Array]' ? v.slice(0, 96) : []; }
+  function object(v) { return v && typeof v === 'object' ? v : {}; }
 
   /** "2026-10-20T18:31" at the location (Open-Meteo's local time) → epoch ms. */
   function localTime(iso, offsetSeconds) {
-    var m = /^(\d+)-(\d+)-(\d+)T(\d+):(\d+)/.exec(iso || '');
+    var m = typeof iso === 'string' && /^(\d+)-(\d+)-(\d+)T(\d+):(\d+)/.exec(iso);
     if (!m) return 0;
     return Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5]) - offsetSeconds * 1000;
   }
 
+  /** The weather from Open-Meteo's answer, or null when it isn't one. */
   function parseWeather(o) {
-    if (!o || !o.current) return null;
-    var off = o.utc_offset_seconds || 0, now = Date.now();
+    if (!o || typeof o !== 'object' || !o.current || typeof o.current !== 'object') return null;
+    var off = number(o.utc_offset_seconds) || 0, now = Date.now(), cur = o.current, daily = object(o.daily);
     var w = {
-      temp: o.current.temperature_2m, code: o.current.weather_code, isDay: o.current.is_day !== 0,
-      max: o.daily.temperature_2m_max[0], min: o.daily.temperature_2m_min[0],
-      sunrise: localTime(o.daily.sunrise[0], off), sunset: localTime(o.daily.sunset[0], off), hours: []
+      temp: number(cur.temperature_2m), code: number(cur.weather_code), isDay: cur.is_day !== 0,
+      max: number(list(daily.temperature_2m_max)[0]), min: number(list(daily.temperature_2m_min)[0]),
+      sunrise: localTime(list(daily.sunrise)[0], off), sunset: localTime(list(daily.sunset)[0], off), hours: []
     };
-    var hr = o.hourly;
-    for (var i = 0; hr && i < hr.time.length && w.hours.length < 6; i++) {
-      var at = localTime(hr.time[i], off);
+    var hr = object(o.hourly), times = list(hr.time), temps = list(hr.temperature_2m), codes = list(hr.weather_code);
+    var isDay = list(hr.is_day);
+    for (var i = 0; i < times.length && w.hours.length < 6; i++) {
+      var at = localTime(times[i], off);
       if (at <= now) continue;
-      w.hours.push({at: at, temp: hr.temperature_2m[i], code: hr.weather_code[i], day: !hr.is_day || hr.is_day[i] !== 0});
+      w.hours.push({at: at, temp: number(temps[i]), code: number(codes[i]), day: isDay[i] !== 0});
     }
     return w;
   }
@@ -216,8 +232,9 @@ var Data = (function () {
         + '&hourly=temperature_2m,weather_code,is_day&timezone=auto&forecast_days=2';
     get(url, {}, function (err, body) {
       fetchingWeather = false;
-      if (err) return;
-      weather = parseWeather(body);
+      var w = err ? null : parseWeather(body);
+      if (!w) return;   // keep the last good one
+      weather = w;
       weatherAt = Date.now();
       store('weather', {place: PLACE, body: body, at: weatherAt});
       changed();
@@ -308,7 +325,7 @@ var Data = (function () {
     },
 
     degrees: function (v) {
-      if (v === undefined || v === null || isNaN(v)) return '—';
+      if (typeof v !== 'number' || !isFinite(v)) return '—';
       var unit = Prefs.temperature();
       var f = unit === 'F' || (unit === 'auto' && Place.fahrenheit);
       return Math.round(f ? v * 9 / 5 + 32 : v) + '°';
@@ -326,7 +343,7 @@ var Data = (function () {
       return m < 60 ? trf('{n} min ago', {n: m}) : trf('{n} h ago', {n: h});
     },
     condition: function (code, day) {
-      if (code === undefined || code === null || code < 0) return '';
+      if (typeof code !== 'number' || code < 0) return '';
       if (code === 0) return day ? tr('Clear') : tr('night|Clear');
       if (code === 1) return day ? tr('Mostly Sunny') : tr('Mostly Clear');
       if (code === 2) return tr('Partly Cloudy');

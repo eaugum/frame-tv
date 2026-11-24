@@ -233,6 +233,7 @@
  "TV Settings": "TV-innstillinger",
  "Team": "Team",
  "Temperature": "Temperatur",
+ "That address can't be used: check the numbers and the port.": "Den adressen kan ikke brukes: sjekk tallene og porten.",
  "The Spotify sign-in has run out: run tools/spotify_login.py and install again.": "Spotify-innloggingen er utløpt: kjør tools/spotify_login.py og installer på nytt.",
  "The TV's name": "TV-ens navn",
  "The guest network is off.": "Gjestenettet er av.",

@@ -233,6 +233,7 @@
  "TV Settings": "TV Settings",
  "Team": "Team",
  "Temperature": "Temperature",
+ "That address can't be used: check the numbers and the port.": "That address can't be used: check the numbers and the port.",
  "The Spotify sign-in has run out: run tools/spotify_login.py and install again.": "The Spotify sign-in has run out: run tools/spotify_login.py and install again.",
  "The TV's name": "The TV's name",
  "The guest network is off.": "The guest network is off.",

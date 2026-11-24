@@ -18,13 +18,26 @@ var Stasera = (function () {
   var EVERY = 5 * 60000, POLL = 3000;
   var EMPTY = {watching: [], watchingCount: 0, shelves: null, wantToStart: [], movies: [], friends: [], stats: null};
 
+  // The fields home.js shows as text, and those it counts with: another type is made one (5 → '5') or left out.
+  var TEXT = ['title', 'episodeName', 'episodeOverview', 'overview', 'airDate', 'releaseDate', 'friendName', 'kind',
+    'together', 'status', 'network', 'month', 'posterPath', 'backdropPath', 'textlessBackdropPath', 'logoPath', 'stillPath'];
+  var NUMBERS = ['year', 'seasonNumber', 'episodeNumber', 'watched', 'total', 'runtime', 'remaining', 'count', 'minutes',
+    'episodes'];
+  // Names that would hide Object's own (a value there makes String() or a lookup throw).
+  var OWN = /^(toString|valueOf|hasOwnProperty|toLocaleString|isPrototypeOf|propertyIsEnumerable|constructor|__proto__|toJSON)$/;
+
   var token = null, data = EMPTY, at = 0, name = '', hello = null, askedFor = '', askedMe = false;
   try {
     token = localStorage.getItem(TOKEN);
     localStorage.removeItem('fmtv.stasera');   // the lists before /tv/home
+    // Checked as an answer is (and movies saved before AUG-1477 become a list).
     var c = JSON.parse(localStorage.getItem(CACHE));
-    if (c && token && c.data) { data = c.data; at = c.at || 0; name = c.name || ''; hello = c.hello || null; }
-    if (!data.movies) data.movies = [];   // saved before AUG-1477
+    if (c && token && c.data && typeof c.data === 'object') {
+      data = clean(c.data, c.data.shelves);
+      at = typeof c.at === 'number' && isFinite(c.at) ? c.at : 0;
+      name = text(c.name);
+      hello = c.hello && text(c.hello.text) && text(c.hello.lang) && typeof c.hello.at === 'number' ? c.hello : null;
+    }
     // A link sent to config.properties (AUG-1521): a new one there wins once, so unlinking on the TV stays.
     var seed = Settings.get('staseraToken');
     if (seed && localStorage.getItem('fmtv.stasera.seed') !== seed) {
@@ -41,11 +54,17 @@ var Stasera = (function () {
   /** One call to Stasera's API; done(status, json). Status 0: no connection. */
   function request(method, path, body, done) {
     var x = new XMLHttpRequest(), over = false;
-    x.open(method, BASE + path, true);
-    x.timeout = 15000;
-    x.setRequestHeader('Accept', 'application/json');
-    if (body) x.setRequestHeader('Content-Type', 'application/json');
-    if (token && path.indexOf('/tv/pair/') !== 0) x.setRequestHeader('Authorization', 'Bearer ' + token);
+    try {
+      // An address the browser can't parse, or a token outside Latin-1, throws here: no connection, not a crash.
+      x.open(method, BASE + path, true);
+      x.timeout = 15000;
+      x.setRequestHeader('Accept', 'application/json');
+      if (body) x.setRequestHeader('Content-Type', 'application/json');
+      if (token && path.indexOf('/tv/pair/') !== 0) x.setRequestHeader('Authorization', 'Bearer ' + token);
+    } catch (e) {
+      setTimeout(function () { done(0, null); }, 0);
+      return;
+    }
     x.onreadystatechange = function () {
       if (x.readyState !== 4 || over) return;
       over = true;
@@ -54,7 +73,7 @@ var Stasera = (function () {
       done(x.status, json);
     };
     x.ontimeout = x.onerror = function () { if (!over) { over = true; done(0, null); } };
-    x.send(body ? JSON.stringify(body) : null);
+    try { x.send(body ? JSON.stringify(body) : null); } catch (e) { over = true; setTimeout(function () { done(0, null); }, 0); }
   }
 
   /** The token no longer works (unlinked on the phone, or the account is gone). */
@@ -120,7 +139,7 @@ var Stasera = (function () {
 
   // MARK: - What it shows
 
-  var fetching = false, failedAt = 0;
+  var fetching = false, failedAt = 0, askingMe = false;
 
   /** The local date (yyyy-mm-dd): the stats' month and year are the TV's, not UTC's. */
   function today() {
@@ -129,7 +148,90 @@ var Stasera = (function () {
     return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate());
   }
 
-  function list(v) { return v && v.length !== undefined ? v : []; }
+  /** A real list, cut short; anything else is empty. */
+  function list(v) { return Object.prototype.toString.call(v) === '[object Array]' ? v.slice(0, 500) : []; }
+  function text(v) { return typeof v === 'string' ? v : ''; }
+  function isObject(v) { return !!v && typeof v === 'object' && Object.prototype.toString.call(v) !== '[object Array]'; }
+  function objects(v) { return list(v).map(item).filter(isObject); }
+  /** A title the home screen can draw: an object with its name. */
+  function isTitle(v) { return isObject(v) && typeof v.title === 'string'; }
+
+  /** JSON without what can't be shown: numbers that aren't finite, Object's own names; three levels deep. */
+  function plain(v, depth) {
+    if (typeof v === 'string' || typeof v === 'boolean' || v === null) return v;
+    if (typeof v === 'number') return isFinite(v) ? v : undefined;
+    if (!v || typeof v !== 'object' || depth <= 0) return undefined;
+    if (Object.prototype.toString.call(v) === '[object Array]') {
+      return list(v).map(function (x) { return plain(x, depth - 1); }).filter(function (x) { return x !== undefined; });
+    }
+    var out = {};
+    for (var k in v) {
+      if (!Object.prototype.hasOwnProperty.call(v, k) || OWN.test(k)) continue;
+      var x = plain(v[k], depth - 1);
+      if (x !== undefined) out[k] = x;
+    }
+    return out;
+  }
+
+  /** One title, friend's entry or stats row, with TEXT as text and NUMBERS as numbers; one that isn't an object: null. */
+  function item(v) {
+    var o = plain(v, 3), i, k;
+    if (!isObject(o)) return null;
+    for (i = 0; i < TEXT.length; i++) {
+      k = TEXT[i];
+      if (!o.hasOwnProperty(k) || o[k] === null || typeof o[k] === 'string') continue;
+      if (typeof o[k] === 'number') o[k] = String(o[k]);
+      else delete o[k];
+    }
+    for (i = 0; i < NUMBERS.length; i++) {
+      k = NUMBERS[i];
+      if (!o.hasOwnProperty(k) || o[k] === null || typeof o[k] === 'number') continue;
+      var n = typeof o[k] === 'string' && o[k] !== '' ? Number(o[k]) : NaN;
+      if (isFinite(n)) o[k] = n;
+      else delete o[k];
+    }
+    if (o.hasOwnProperty('entity')) o.entity = item(o.entity);
+    return o;
+  }
+
+  /**
+   * /tv/home's answer (or the one kept from an earlier start) with what home.js relies on checked: lists are real
+   * lists of titles, and the stats' lists too, so a bad answer costs Stasera's tiles at most and never the start.
+   * shelves: watchingShelves from the answer, or the kept shelves; their indexes follow the titles that are kept.
+   */
+  function clean(o, shelves) {
+    var all = list(o.watching), watching = [], at = {}, i;
+    for (i = 0; i < all.length; i++) {
+      var t = item(all[i]);
+      if (isTitle(t)) { at[i] = watching.length; watching.push(t); }
+    }
+    var sh = shelvesOf(shelves, all.length);
+    if (sh) {
+      for (var k in sh) {
+        if (sh.hasOwnProperty(k)) sh[k] = sh[k].filter(function (n) { return at[n] !== undefined; }).map(function (n) { return at[n]; });
+      }
+    }
+    var count = o.watchingCount;
+    return {
+      watching: watching, watchingCount: typeof count === 'number' && isFinite(count) && count > 0 ? count : watching.length,
+      shelves: sh, wantToStart: objects(o.wantToStart).filter(isTitle), movies: objects(o.movies).filter(isTitle),
+      friends: objects(o.friends).filter(function (f) { return isObject(f.entity); }), stats: cleanStats(o.stats)
+    };
+  }
+
+  /** The stats' lists as real lists of objects, and hourCounts as up to 24 numbers. */
+  function cleanStats(s) {
+    if (!isObject(s)) return null;
+    var out = {}, k;
+    for (k in s) if (Object.prototype.hasOwnProperty.call(s, k)) out[k] = s[k];
+    out.hourCounts = list(s.hourCounts).slice(0, 24).map(function (n) { return typeof n === 'number' && isFinite(n) ? n : 0; });
+    var lists = ['byMonth', 'byYear', 'topShowsByTime', 'topShowsLast30Days', 'topNetworks'];
+    for (var i = 0; i < lists.length; i++) if (s[lists[i]] !== undefined && s[lists[i]] !== null) out[lists[i]] = objects(s[lists[i]]);
+    if (s.completions !== undefined) out.completions = isObject(s.completions) ? item(s.completions) : null;
+    if (out.completions) out.completions.latest = objects(out.completions.latest);
+    if (s.backlog !== undefined && !isObject(s.backlog)) out.backlog = null;
+    return out;
+  }
 
   /** The greeting's language: Stasera has Norwegian and English. */
   function lang() { return I18N.base === 'nb' ? 'nb' : 'en'; }
@@ -155,30 +257,32 @@ var Stasera = (function () {
     fetching = true;
     var path = '/tv/home?today=' + today() + '&hour=' + new Date().getHours() + '&lang=' + lang();
     request('GET', path, null, function (status, json) {
-      if (status === 401) { fetching = false; forget(); return; }
-      if (status !== 200 || !json) { fetching = false; failedAt = Date.now(); return; }   // keep the last answer
-      data = {
-        watching: list(json.watching), watchingCount: json.watchingCount || list(json.watching).length,
-        shelves: shelvesOf(json.watchingShelves, list(json.watching).length),
-        wantToStart: list(json.wantToStart), movies: list(json.movies), friends: list(json.friends), stats: json.stats || null
-      };
+      fetching = false;   // first, so a listener that throws can't leave it set
+      if (status === 401) { forget(); return; }
+      if (status !== 200 || !isObject(json)) { failedAt = Date.now(); return; }   // keep the last answer
+      data = clean(json, json.watchingShelves);
       at = Date.now();
       var g = json.greeting;
       // Without lang it is an older Stasera's, in English with the first name: home.js greets by itself then.
-      hello = g && g.text && g.lang ? {text: g.text, lang: g.lang, at: at} : null;
+      hello = g && text(g.text) && text(g.lang) ? {text: g.text, lang: g.lang, at: at} : null;
       askedFor = h;
       failedAt = 0;
       save();
+      askMe();
       changed();
-      // Once per start: the TV can be renamed in Stasera.
-      if (askedMe) { fetching = false; return; }
-      request('GET', '/tv/me', null, function (s2, me) {
-        fetching = false;
-        if (s2 !== 200 || !me) return;
-        askedMe = true;
-        name = me.name || name;
-        save();
-      });
+    });
+  }
+
+  /** Once per start: the TV can be renamed in Stasera. */
+  function askMe() {
+    if (askedMe || askingMe) return;
+    askingMe = true;
+    request('GET', '/tv/me', null, function (s2, me) {
+      askingMe = false;
+      if (s2 !== 200 || !me) return;
+      askedMe = true;
+      name = text(me.name) || name;
+      save();
     });
   }
 
@@ -188,7 +292,7 @@ var Stasera = (function () {
   /** The service of a title among the TV's apps ({key, name}), from its providers, then its channels. */
   function service(item) {
     if (!item) return null;
-    var names = list(item.providers).concat(list(item.networks));
+    var names = list(item.providers).concat(list(item.networks)).filter(function (n) { return typeof n === 'string'; });
     for (var i = 0; i < names.length; i++) if (ALIAS[names[i]]) names[i] = ALIAS[names[i]];
     return Data.serviceFor(names);
   }

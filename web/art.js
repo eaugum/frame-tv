@@ -29,19 +29,31 @@ var Art = (function () {
 
   function changed() { for (var i = 0; i < listeners.length; i++) listeners[i](); }
 
+  /** A field of the status as text: '' when it's missing or not a string. */
+  function text(name) {
+    var v = status && status[name];
+    return typeof v === 'string' ? v : '';
+  }
+
   function request(method, path, timeout, done, body) {
     var x = new XMLHttpRequest();
-    x.open(method, URL + path, true);
-    if (KEY) x.setRequestHeader('Authorization', 'Bearer ' + KEY);
-    if (body) x.setRequestHeader('Content-Type', 'application/json');
-    x.timeout = timeout;
     x.onload = function () {
       var o = null;
       try { o = JSON.parse(x.responseText); } catch (e) {}
+      if (!o || typeof o !== 'object') o = null;
       done(o, x.status >= 200 && x.status < 300 && !!o && o.ok !== false);
     };
     x.onerror = x.ontimeout = function () { done(null, false); };
-    x.send(body ? JSON.stringify(body) : null);
+    // An address the browser can't parse, or a key outside Latin-1, throws here: an answer that failed, not a crash.
+    try {
+      x.open(method, URL + path, true);
+      if (KEY) x.setRequestHeader('Authorization', 'Bearer ' + KEY);
+      if (body) x.setRequestHeader('Content-Type', 'application/json');
+      x.timeout = timeout;
+      x.send(body ? JSON.stringify(body) : null);
+    } catch (e) {
+      setTimeout(function () { done(null, false); }, 0);
+    }
   }
 
   // MARK: - The event log (AUG-1523)
@@ -178,8 +190,8 @@ var Art = (function () {
   function refresh() {
     if (!ON || SAMPLE || !URL) return;
     send();
-    request('GET', '/status', 10000, function (o) {
-      if (o) { status = o; changed(); }
+    request('GET', '/status', 10000, function (o, ok) {
+      if (ok) { status = o; changed(); }   // an error keeps the last good status
     });
   }
 
@@ -189,7 +201,7 @@ var Art = (function () {
     busy = true;
     request('POST', path, 180000, function (o, ok) {
       busy = false;
-      if (o) { status = o; changed(); }
+      if (ok) { status = o; changed(); }
       done(ok);
     });
   }
@@ -201,17 +213,22 @@ var Art = (function () {
     sample: function () { return SAMPLE; },
     /** "Title, Artist" of what's on the TV, or ''. */
     showing: function () {
-      var s = status && status.showing || '';
+      var s = text('showing');
       var c = s.indexOf(': ');
       return c < 0 ? s : s.slice(c + 2);
     },
-    minutes: function () { return status ? status.interval_minutes : 0; },
+    minutes: function () {
+      var m = status && status.interval_minutes;
+      return typeof m === 'number' && isFinite(m) ? m : 0;
+    },
     /** 'shuffle', 'category' or 'fixed' (a picture chosen on the add-on's page, until the next Morgenbildet). */
-    mode: function () { return status && status.mode || 'shuffle'; },
-    category: function () { return status && status.category || ''; },
+    mode: function () { return text('mode') || 'shuffle'; },
+    category: function () { return text('category'); },
     busy: function () { return busy; },
     /** False when the screensaver is switched off in Home Assistant (switch.frame_art_screensaver). */
-    saverAllowed: function () { return !(status && status.settings && status.settings.screensaver === false); },
+    saverAllowed: function () {
+      return !(status && status.settings && typeof status.settings === 'object' && status.settings.screensaver === false);
+    },
     /** A new picture, and the TV in Art Mode. done(ok). */
     next: function (done) { act('/next?art_mode=1', done); },
     /** Art Mode, with the picture it has. done(ok). */
@@ -221,7 +238,7 @@ var Art = (function () {
     saver: function (minutes, done) {
       if (!ON || SAMPLE || !URL || busy) { done(false); return; }
       request('POST', '/saver?minutes=' + minutes, 60000, function (o, ok) {
-        if (o) { status = o; changed(); }
+        if (ok) { status = o; changed(); }
         done(ok);
       });
     },

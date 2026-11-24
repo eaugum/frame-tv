@@ -29,6 +29,24 @@
 
   function $(id) { return document.getElementById(id); }
 
+  /**
+   * Runs one part of the screen (a tile, a pane, a module's refresh) on its own: when it throws, the rest is still
+   * drawn and asked for, and the add-on's event log hears about it (the first 20).
+   */
+  var slips = 0;
+
+  /** A module's yes or no (enabled, linked): false when it throws, so the tabs and tiles of the rest still come. */
+  function is(module, name) {
+    try { return !!module[name](); } catch (e) { return false; }
+  }
+
+  function safely(fn) {
+    try { fn(); } catch (e) {
+      if (++slips > 20) return;
+      try { Art.event('error', 'home.js: ' + String(e && e.message || e).slice(0, 200)); } catch (e2) {}
+    }
+  }
+
   function el(tag, cls, parent, text) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -553,8 +571,8 @@
 
   /** On the minute, so the clock never runs late. */
   function tickClock() {
-    renderClock();
     setTimeout(tickClock, 60000 - Date.now() % 60000 + 50);
+    safely(renderClock);
   }
 
   // MARK: - Navigation: the tab bar, and which tab is in front
@@ -570,7 +588,7 @@
   /** The settings first, Art Mode while its module is on, then the tabs. */
   function barItems() {
     var out = TABS.slice();
-    if (Art.enabled()) out.unshift({sym: 'art', run: function () { artDo(Art.artMode, tr('Art Mode…')); }});
+    if (is(Art, 'enabled')) out.unshift({sym: 'art', run: function () { artDo(Art.artMode, tr('Art Mode…')); }});
     out.unshift({sym: 'settings', run: function () { openSettings(); }});
     return out;
   }
@@ -588,11 +606,11 @@
    */
   function availableTabs() {
     var out = ['home', 'tv'];
-    if (YouTube.enabled()) out.push('youtube');
-    if (Stasera.linked()) { out.unshift('search'); out.push('stasera'); }
-    if (GitHub.enabled()) out.push('github');
-    if (HA.enabled()) out.push('ha');
-    if (Spotify.enabled()) out.push('spotify');
+    if (is(YouTube, 'enabled')) out.push('youtube');
+    if (is(Stasera, 'linked')) { out.unshift('search'); out.push('stasera'); }
+    if (is(GitHub, 'enabled')) out.push('github');
+    if (is(HA, 'enabled')) out.push('ha');
+    if (is(Spotify, 'enabled')) out.push('spotify');
     return out;
   }
 
@@ -1020,7 +1038,7 @@
       tvf.idx[lane.id] = Math.min(tvf.idx[lane.id] || 0, lane.items.length - 1);
       for (var j = 0; j < lane.items.length; j++) {
         var node = el('div', 'item', track);
-        lane.items[j].draw(node);
+        safely(lane.items[j].draw.bind(null, node));   // one item that throws costs that card
         lane.items[j].node = node;
         hoverItem(node, i, j);
       }
@@ -1353,48 +1371,56 @@
   function renderHome() {
     var pane = startPane('home');
     var g = el('div', 'greet', pane);
-    el('h1', '', g, greeting());
-    var h = Stasera.home(), linked = Stasera.linked(), hv = homeVideo(), i;
-    var cont = null, want = toStart(h)[0] || null;
-    for (i = 0; i < h.watching.length && !cont; i++) if (appOf(h.watching[i]) && wide(h.watching[i], true)) cont = h.watching[i];
+    safely(function () { el('h1', '', g, greeting()); });
+    // Stasera's and YouTube's titles pick the big tile; one that throws leaves the tiles of the rest.
+    var linked = false, hv = null, cont = null, want = null, i;
+    safely(function () { hv = homeVideo(); });
+    safely(function () {
+      var h = Stasera.home();
+      linked = Stasera.linked();
+      want = toStart(h)[0] || null;
+      for (var j = 0; j < h.watching.length && !cont; j++) if (appOf(h.watching[j]) && wide(h.watching[j], true)) cont = h.watching[j];
+    });
     featured = cont || want;
     video = null;
-    var linkBig = !featured && Stasera.enabled() && !linked;
-    if (cont) featureTile(cont, tr('Continue Watching'));
-    else if (want) featureTile(want, tr('Start this one?'));
-    else if (linkBig) linkTile();
-    else if (hv) { video = hv.video; videoFeatureTile(hv); }
-    else weatherTile(112, 300, 1040, 440);
+    var linkBig = !featured && is(Stasera, 'enabled') && !linked;
+    if (cont) safely(function () { featureTile(cont, tr('Continue Watching')); });
+    else if (want) safely(function () { featureTile(want, tr('Start this one?')); });
+    else if (linkBig) safely(linkTile);
+    else if (hv) { video = hv.video; safely(function () { videoFeatureTile(hv); }); }
+    else safely(function () { weatherTile(112, 300, 1040, 440); });
     var weatherBig = !featured && !linkBig && !video;
     var used = 0;   // shelf apps that have a tile
     if (linked) {
-      newEpisodesTile(1176, 300);
-      if (cont && want) besideTile(1176, 532, want, tr('Start this one?'));
-      else if (!weatherBig) weatherTile(1176, 532, 632, 208);
-      else if (shelf.length) appAt(shelf[used++], 632, 208)(1176, 532);
+      safely(function () { newEpisodesTile(1176, 300); });
+      if (cont && want) safely(function () { besideTile(1176, 532, want, tr('Start this one?')); });
+      else if (!weatherBig) safely(function () { weatherTile(1176, 532, 632, 208); });
+      else if (shelf.length) safely(appAt(shelf[used++], 632, 208).bind(null, 1176, 532));
     } else {
       // The weather (when the big tile isn't it), and apps in the room left.
       var side = [];
       if (!weatherBig) side.push(function (x, y) { weatherTile(x, y, 632, 208); });
       while (side.length < 2 && used < shelf.length) side.push(appAt(shelf[used++], 632, 208));
-      for (i = 0; i < side.length; i++) side[i](1176, 300 + i * 232);
+      for (i = 0; i < side.length; i++) safely(side[i].bind(null, 1176, 300 + i * 232));
     }
     // The first four of these that are on (a module that's off makes room for the next), and apps after them when
     // there are fewer. YouTube's tile only when its video isn't the big one; Spotify's first while something plays.
-    var feed = friendsFeed(), small = [], playing = Spotify.enabled() && !!Spotify.now();
+    var feed = [], small = [], playing = false;
+    safely(function () { feed = friendsFeed(); });
+    safely(function () { playing = Spotify.enabled() && !!Spotify.now(); });
     if (playing) small.push(spotifyTile);
     if (linked) small.push(statsTile);
     if (hv && !video) small.push(function (x, y) { youtubeTile(x, y, hv); });
-    if (GitHub.enabled()) small.push(githubTile);
-    if (HA.enabled()) small.push(haTile);
+    if (is(GitHub, 'enabled')) small.push(githubTile);
+    if (is(HA, 'enabled')) small.push(haTile);
     if (feed.length) small.push(function (x, y) { friendsTile(x, y, feed[0]); });
-    if (Spotify.enabled() && !playing) small.push(spotifyTile);
-    if (Art.enabled()) small.push(artTile);
+    if (is(Spotify, 'enabled') && !playing) small.push(spotifyTile);
+    if (is(Art, 'enabled')) small.push(artTile);
     small = small.slice(0, 4);
     while (small.length < 4 && used < shelf.length) small.push(appAt(shelf[used++], 406, 210));
-    for (i = 0; i < small.length; i++) small[i](112 + i * 430, 772);
+    for (i = 0; i < small.length; i++) safely(small[i].bind(null, 112 + i * 430, 772));
     endPane('home');
-    renderClock();
+    safely(renderClock);
     if (nav.tab === 'home') homeLight();
   }
 
@@ -1465,7 +1491,7 @@
     var room = 1696 - 24 * (specs.length - 1), x = 112;
     for (i = 0; i < specs.length; i++) {
       var w = i === specs.length - 1 ? 1808 - x : Math.round(specs[i].w * room / total);
-      specs[i].draw(x, y, w, h);
+      safely(specs[i].draw.bind(null, x, y, w, h));
       x += w + 24;
     }
   }
@@ -2787,10 +2813,10 @@
   }
 
   function renderPanes() {
-    if (Stasera.linked()) { renderStasera(); renderSearch(); }
-    if (GitHub.enabled()) renderGitHub();
-    if (HA.enabled()) renderHA();
-    if (Spotify.enabled()) renderSpotify();
+    if (is(Stasera, 'linked')) { safely(renderStasera); safely(renderSearch); }
+    if (is(GitHub, 'enabled')) safely(renderGitHub);
+    if (is(HA, 'enabled')) safely(renderHA);
+    if (is(Spotify, 'enabled')) safely(renderSpotify);
   }
 
   // MARK: - Pointer: it focuses what it's over (the Magic Remote, or a mouse when previewing)
@@ -3446,14 +3472,20 @@
   /** A request to a service; done(status, json): 0 when it didn't answer. */
   function ask(method, url, headers, form, done) {
     var x = new XMLHttpRequest(), over = false, body = null;
-    x.open(method, url, true);
-    x.timeout = 12000;
-    for (var h in headers) if (headers.hasOwnProperty(h)) x.setRequestHeader(h, headers[h]);
-    if (form) {
-      var parts = [];
-      for (var f in form) if (form.hasOwnProperty(f)) parts.push(encodeURIComponent(f) + '=' + encodeURIComponent(form[f]));
-      body = parts.join('&');
-      x.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    try {
+      // A value outside Latin-1 in a header throws here: it didn't answer, rather than a sheet stuck on Checking.
+      x.open(method, url, true);
+      x.timeout = 12000;
+      for (var h in headers) if (headers.hasOwnProperty(h)) x.setRequestHeader(h, headers[h]);
+      if (form) {
+        var parts = [];
+        for (var f in form) if (form.hasOwnProperty(f)) parts.push(encodeURIComponent(f) + '=' + encodeURIComponent(form[f]));
+        body = parts.join('&');
+        x.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+      }
+    } catch (e) {
+      setTimeout(function () { done(0, null); }, 0);
+      return;
     }
     x.onreadystatechange = function () {
       if (x.readyState !== 4 || over) return;
@@ -3463,7 +3495,7 @@
       done(x.status, json);
     };
     x.ontimeout = x.onerror = function () { if (!over) { over = true; done(0, null); } };
-    x.send(body);
+    try { x.send(body); } catch (e) { over = true; setTimeout(function () { done(0, null); }, 0); }
   }
 
   /** Home Assistant's token, by signing in on its WebSocket (its REST API may not allow the TV's origin). */
@@ -3492,6 +3524,23 @@
   var ADDRESSES = ['staseraUrl', 'homeAssistantUrl', 'artUrl'];
 
   /**
+   * Whether an address can be asked: a host name, an IPv4 address (four numbers up to 255) or [IPv6], a port up to
+   * 65535, then a path. One the browser can't parse makes every request to it throw, so it's never saved; the
+   * browser's own parser (XMLHttpRequest.open) has the last word.
+   */
+  function usableAddress(url) {
+    var m = /^https?:\/\/([A-Za-z0-9._~-]+|\[[0-9A-Fa-f:.]+\])(?::(\d{1,5}))?([\/?#]\S*)?$/.exec(url);
+    if (!m || (m[2] && +m[2] > 65535)) return false;
+    if (/^[\d.]+$/.test(m[1])) {
+      var parts = m[1].split('.');
+      if (parts.length !== 4) return false;
+      for (var i = 0; i < 4; i++) if (!/^\d{1,3}$/.test(parts[i]) || +parts[i] > 255) return false;
+    }
+    try { new XMLHttpRequest().open('GET', url, true); } catch (e) { return false; }
+    return true;
+  }
+
+  /**
    * Is the value good? done(why, value): why is '' when it may be saved, value what to save (Spotify hands back a new
    * refresh token, and the old one may stop working). Tokens are tried on their service; a service that doesn't
    * answer saves nothing.
@@ -3504,7 +3553,8 @@
     }
     if (ADDRESSES.indexOf(key) >= 0) {
       value = value.replace(/\/+$/, '');
-      done(/^https?:\/\/[^\s\/]+/.test(value) ? '' : tr('An address starts with http:// or https://.'), value);
+      if (!/^https?:\/\//.test(value)) done(tr('An address starts with http:// or https://.'), value);
+      else done(usableAddress(value) ? '' : tr("That address can't be used: check the numbers and the port."), value);
       return;
     }
     if (key === 'githubToken') {
@@ -4006,36 +4056,49 @@
 
   /** The screensaver's photos: our titles from Stasera (without it, only the clock). */
   function saverPhotos() {
-    return Stasera.linked() ? Stasera.showcase() : [];
+    try { return Stasera.linked() ? Stasera.showcase() : []; } catch (e) { return []; }
+  }
+
+  /** The add-on's event log; a module that throws there costs the line, not the screensaver. */
+  function artLog(kind, detail) {
+    try { Art.event(kind, detail); } catch (e) {}
   }
 
   /** With Frame Art the TV goes to Art Mode (AUG-1496); ours only when the add-on doesn't answer. */
   function startSaver() {
-    if (!Art.enabled() || Art.sample()) { showSaver(); return; }
+    if (!is(Art, 'enabled') || is(Art, 'sample')) { showSaver(); return; }
     if (artAsked) return;
     artAsked = true;
-    Art.event('saver_start', 'the screensaver: asking Frame Art for Art Mode');
-    Art.saver(Prefs.saverEvery(), function (ok) {
-      if (!ok) Art.event('saver_failed', "Frame Art didn't answer: Frame TV's own screensaver");
-      if (!ok && artAsked && !saverOn) showSaver();
-    });
+    artLog('saver_start', 'the screensaver: asking Frame Art for Art Mode');
+    try {
+      Art.saver(Prefs.saverEvery(), function (ok) {
+        if (!ok) artLog('saver_failed', "Frame Art didn't answer: Frame TV's own screensaver");
+        if (!ok && artAsked && !saverOn) showSaver();
+      });
+    } catch (e) {
+      if (!saverOn) showSaver();   // Frame Art threw: ours
+    }
   }
 
   /** Music is playing and the Spotify tab is in front: no screensaver then. */
   function listening() {
-    var n = Spotify.now();
-    return nav.tab === 'spotify' && !!(n && n.playing);
+    try {
+      var n = Spotify.now();
+      return nav.tab === 'spotify' && !!(n && n.playing);
+    } catch (e) { return false; }
   }
 
   /** Ms of idling before the screensaver (Home Settings), or 0: never, also when Home Assistant has it off. */
   function saverAfter() {
-    return Art.enabled() && !Art.saverAllowed() ? 0 : Prefs.saverMinutes() * 60000;
+    var off = false;
+    try { off = Art.enabled() && !Art.saverAllowed(); } catch (e) {}   // Frame Art threw: Home Settings decide
+    return off ? 0 : Prefs.saverMinutes() * 60000;
   }
 
   function showSaver() {
     var photos = saverPhotos();
     saverOn = true;
-    Art.event('saver_own', "Frame TV's own screensaver started");
+    artLog('saver_own', "Frame TV's own screensaver started");
     clearTimeout(heroTimer);
     var s = $('saver');
     s.innerHTML = '';
@@ -4077,7 +4140,7 @@
   function hideSaver() {
     if (!saverOn) return;
     saverOn = false;
-    Art.event('saver_stop', "Frame TV's own screensaver stopped");
+    artLog('saver_stop', "Frame TV's own screensaver stopped");
     clearTimeout(saverTimer);
     setClass($('saver'), 'on', false);
     if (cinema() && tvf.area === 'hero' && !calmMode()) showHero(tvf.hero, true);
@@ -4239,14 +4302,11 @@
 
   // MARK: - Start
 
+  /** Every pane, each on its own: one that throws leaves the others drawn. */
   function renderAll() {
-    renderTabs();
-    renderHome();
-    renderTV();
-    renderPanes();
-    renderClock();
-    if (st.zone === Z.SETTINGS) renderSettings();
-    showTab(nav.tab);
+    [renderTabs, renderHome, renderTV, renderPanes, renderClock].forEach(safely);
+    if (st.zone === Z.SETTINGS) safely(renderSettings);
+    safely(function () { showTab(nav.tab); });
   }
 
   /** hide_apps: left out of the apps and All Apps, by id or name (part of it). The entries that hide app. */
@@ -4282,12 +4342,13 @@
     showTab('home');
   }
 
+  /**
+   * Each module on its own, so one that throws doesn't stop the others; then the weather (data.js, the core), last,
+   * so the modules are asked even when it throws (the 30 s loop runs all of it through safely()).
+   */
   function refresh() {
+    [Stasera.refresh, GitHub.refresh, YouTube.refresh, Spotify.refresh].forEach(safely);
     Data.refresh();
-    Stasera.refresh();
-    GitHub.refresh();
-    YouTube.refresh();
-    Spotify.refresh();
   }
 
   /** What Stasera last said, so a refresh with the same answer doesn't redraw (and reload every picture). */
@@ -4295,8 +4356,10 @@
     try { return (Stasera.linked() ? '1' : '0') + JSON.stringify(Stasera.home()); } catch (e) { return String(Math.random()); }
   }
 
-  var wasLinked = Stasera.linked(), lastStasera = staseraKey();
-  Stasera.onChange(function () {
+  var wasLinked = false, lastStasera = staseraKey();
+  safely(function () { wasLinked = Stasera.linked(); });
+  Stasera.onChange(function () { safely(staseraChanged); });
+  function staseraChanged() {
     var linked = Stasera.linked();
     if (linked !== wasLinked) {
       wasLinked = linked;
@@ -4308,64 +4371,77 @@
       renderTabs();   // the Stasera and Search tabs come and go with the link
     }
     if (st.zone === Z.LINK && linkFor === 'stasera') renderLink();
-    renderClock();   // the greeting
+    safely(renderClock);   // the greeting
     var key = staseraKey();
     if (key === lastStasera) return;
     lastStasera = key;
-    renderHome();
-    renderTV();
-    if (linked) renderStasera();
+    [renderHome, renderTV].forEach(safely);
+    if (linked) safely(renderStasera);
     showTab(nav.tab);
-  });
+  }
 
   var lastArt = '';
   Art.onChange(function () {
-    var key = [Art.showing(), Art.minutes(), Art.mode(), Art.category()].join(':');
-    if (key === lastArt) return;
-    lastArt = key;
-    renderHome();
-    update();
+    safely(function () {
+      var key = [Art.showing(), Art.minutes(), Art.mode(), Art.category()].join(':');
+      if (key === lastArt) return;
+      lastArt = key;
+      renderHome();
+      update();
+    });
   });
 
   var lastGitHub = '';
   GitHub.onChange(function () {
-    var key = JSON.stringify(GitHub.summary());
-    if (key === lastGitHub) return;
-    lastGitHub = key;
-    renderHome();
-    renderGitHub();
-    update();
+    safely(function () {
+      var key = JSON.stringify(GitHub.summary());
+      if (key === lastGitHub) return;
+      lastGitHub = key;
+      [renderHome, renderGitHub].forEach(safely);
+      update();
+    });
   });
 
   // HA's states come one by one; draw once they've settled.
   var haTimer = 0;
   HA.onChange(function () {
-    if (!HA.enabled()) return;
-    clearTimeout(haTimer);
-    haTimer = setTimeout(function () {
-      renderHA();
-      if (nav.tab === 'home' && st.zone === Z.MAIN) renderHome();
-      update();
-    }, 250);
+    safely(function () {
+      if (!HA.enabled()) return;
+      clearTimeout(haTimer);
+      haTimer = setTimeout(function () {
+        safely(renderHA);
+        if (nav.tab === 'home' && st.zone === Z.MAIN) safely(renderHome);
+        safely(update);
+      }, 250);
+    });
   });
   HA.onNotify(function (d) {
-    var text = [d.title, d.message].filter(function (s) { return s; }).join(': ');
-    if (text) toast(text, d.seconds > 0 ? d.seconds * 1000 : 0);
+    safely(function () {
+      var text = [d.title, d.message].filter(function (s) { return s; }).join(': ');
+      if (text) toast(text, d.seconds > 0 ? d.seconds * 1000 : 0);
+    });
   });
 
   Spotify.onChange(function () {
-    if (!Spotify.enabled()) return;
-    renderSpotify();
-    if (nav.tab === 'spotify') showTab('spotify');   // the room's light: the new cover
-    if (st.zone === Z.MAIN) renderHome();   // also behind another tab, so Hjem is right when it comes back
-    update();
+    safely(function () {
+      if (!Spotify.enabled()) return;
+      safely(renderSpotify);
+      if (nav.tab === 'spotify') showTab('spotify');   // the room's light: the new cover
+      if (st.zone === Z.MAIN) safely(renderHome);   // also behind another tab, so Hjem is right when it comes back
+      update();
+    });
   });
-  setInterval(function () { if (nav.tab === 'spotify' && !document.hidden) tickSpotify(); }, 1000);
-  if (Spotify.enabled()) TV.mediaKeys();
+  setInterval(function () { if (nav.tab === 'spotify' && !document.hidden) safely(tickSpotify); }, 1000);
+  safely(function () { if (Spotify.enabled()) TV.mediaKeys(); });
 
-  function youtubeKey() { return JSON.stringify([YouTube.playlist(), YouTube.saved(), YouTube.videos()]); }
-  var wasSignedIn = YouTube.linked(), lastYouTube = youtubeKey();
-  YouTube.onChange(function () {
+  /** What YouTube last said, as staseraKey(): a module that throws here mustn't stop the start. */
+  function youtubeKey() {
+    try { return JSON.stringify([YouTube.playlist(), YouTube.saved(), YouTube.videos()]); } catch (e) { return String(Math.random()); }
+  }
+  var wasSignedIn = false, lastYouTube = youtubeKey();
+  safely(function () { wasSignedIn = YouTube.linked(); });
+  YouTube.onChange(function () { safely(youtubeChanged); });
+  function youtubeChanged() {
     var linked = YouTube.linked();
     if (linked !== wasSignedIn) {
       wasSignedIn = linked;
@@ -4377,19 +4453,18 @@
     var key = youtubeKey();
     if (key === lastYouTube) return;
     lastYouTube = key;
-    renderHome();
-    renderTV();
+    [renderHome, renderTV].forEach(safely);
     showTab(nav.tab);
-  });
+  }
 
   Data.onChange(function () {
-    renderClock();
-    if (nav.tab === 'home' && st.zone === Z.MAIN) { renderHome(); update(); }
+    safely(renderClock);
+    if (nav.tab === 'home' && st.zone === Z.MAIN) { safely(renderHome); update(); }
   });
 
   function reopened() {
-    reset();
-    loadApps(function () { renderHome(); renderTV(); update(); refresh(); });
+    safely(reset);
+    loadApps(function () { [renderHome, renderTV, update].forEach(safely); refresh(); });
   }
 
   window.addEventListener('resize', fit);
@@ -4399,24 +4474,29 @@
     if (document.hidden) { hideSaver(); clearTimeout(heroTimer); return; }
     idleAt = Date.now();
     artAsked = false;
-    loadApps(function () { renderHome(); renderTV(); showTab(nav.tab); refresh(); });
+    loadApps(function () {
+      [renderHome, renderTV].forEach(safely);
+      safely(function () { showTab(nav.tab); });
+      refresh();
+    });
   });
 
   I18N.set(Prefs.language());
   fit();
-  renderTabs();
+  safely(renderTabs);
   tickClock();
-  update();
+  safely(update);
   loadApps(function () {
     renderAll();
     refresh();
   });
+  // Each step on its own: a module that throws costs its part, and the screensaver still starts with what's left.
   setInterval(function () {
-    refresh();
+    safely(refresh);
     var after = saverAfter();
     if (listening()) idleAt = Date.now();   // the idle minutes count from when the music stops
-    if (!saverOn && after && !sheetOpen() && Date.now() - idleAt > after) startSaver();
-    if (saverOn) tickSaverClock($('saver').querySelector('.clock'));
+    if (!saverOn && after && !sheetOpen() && Date.now() - idleAt > after) safely(startSaver);
+    if (saverOn) safely(function () { tickSaverClock($('saver').querySelector('.clock')); });
   }, 30000);
 
   // For the browser preview and tests.

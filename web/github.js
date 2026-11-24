@@ -37,10 +37,10 @@ var GitHub = (function () {
 
   try {
     var c = JSON.parse(localStorage.getItem(CACHE));
-    if ((TOKEN || VERCEL) && c && c.stamp === stamp() && c.data) data = c.data;
+    if ((TOKEN || VERCEL) && c && c.stamp === stamp() && c.data) data = cleanCache(c.data);
     // A repo without its languages (a cache from before AUG-1474) asks again at once.
     for (var r = 0; r < data.repos.length; r++) if (!data.repos[r].langsAt) data.at = 0;
-  } catch (e) {}
+  } catch (e) { data = {repos: [], deploys: null, at: 0}; }
 
   function save() { try { localStorage.setItem(CACHE, JSON.stringify({stamp: stamp(), data: data})); } catch (e) {} }
 
@@ -50,9 +50,15 @@ var GitHub = (function () {
   /** GET a JSON document; done(status, json). Status 0: no connection. */
   function get(url, headers, done) {
     var x = new XMLHttpRequest(), over = false;
-    x.open('GET', url, true);
-    x.timeout = 15000;
-    for (var h in headers) if (headers.hasOwnProperty(h)) x.setRequestHeader(h, headers[h]);
+    try {
+      // A token with a character outside Latin-1 throws in setRequestHeader: no connection, not a crash.
+      x.open('GET', url, true);
+      x.timeout = 15000;
+      for (var h in headers) if (headers.hasOwnProperty(h)) x.setRequestHeader(h, headers[h]);
+    } catch (e) {
+      setTimeout(function () { done(0, null); }, 0);
+      return;
+    }
     x.onreadystatechange = function () {
       if (x.readyState !== 4 || over) return;
       over = true;
@@ -61,7 +67,7 @@ var GitHub = (function () {
       done(x.status, json);
     };
     x.ontimeout = x.onerror = function () { if (!over) { over = true; done(0, null); } };
-    x.send(null);
+    try { x.send(null); } catch (e) { over = true; setTimeout(function () { done(0, null); }, 0); }
   }
 
   function gh(path, done) {
@@ -69,13 +75,60 @@ var GitHub = (function () {
   }
 
   function isList(v) { return Object.prototype.toString.call(v) === '[object Array]'; }
+  function isNumber(v) { return typeof v === 'number' && isFinite(v); }
+  function isText(v) { return typeof v === 'string'; }
+
+  /** A week as GitHub's commit_activity has it once kept: {w, d: seven counts}. */
+  function goodWeek(w) {
+    if (!w || !isNumber(w.w) || !isList(w.d) || w.d.length !== 7) return false;
+    for (var k = 0; k < 7; k++) if (!isNumber(w.d[k])) return false;
+    return true;
+  }
+
+  /** The languages that are counted in bytes; anything else, and a name of Object's own (toString...), is left out. */
+  function goodLangs(o) {
+    if (!o || typeof o !== 'object' || isList(o)) return null;
+    var out = {};
+    for (var k in o) {
+      if (Object.prototype.hasOwnProperty.call(o, k) && !(k in Object.prototype) && isNumber(o[k])) out[k] = o[k];
+    }
+    return out;
+  }
+
+  /**
+   * What was kept from an earlier start, checked as the answers are: a repo that isn't one is left out, weeks that
+   * aren't right are asked for again, and languages and the last commit of another type are dropped.
+   */
+  function cleanCache(d) {
+    var out = {repos: [], deploys: null, at: isNumber(d.at) ? d.at : 0};
+    var repos = isList(d.repos) ? d.repos.slice(0, REPOS) : [];
+    for (var i = 0; i < repos.length; i++) {
+      var r = repos[i];
+      if (!r || !isText(r.name) || !isText(r.full) || !isText(r.pushedAt)) { out.at = 0; continue; }
+      var weeks = isList(r.weeks) && r.weeks.length <= WEEKS + 1 && r.weeks.every(goodWeek) ? r.weeks : null;
+      var last = r.last && isText(r.last.message) && isNumber(r.last.at) ? r.last : null;
+      var langs = goodLangs(r.langs);
+      out.repos.push({name: r.name, full: r.full, pushedAt: r.pushedAt, weeks: weeks, last: last,
+        activityFor: weeks && isText(r.activityFor) ? r.activityFor : '',
+        lastFor: (last || r.last === null) && isText(r.lastFor) ? r.lastFor : '',
+        langs: langs, langsAt: (langs || !r.langs) && isNumber(r.langsAt) ? r.langsAt : 0});
+      if (r.weeks && !weeks) out.at = 0;   // ask again now
+    }
+    if (isList(d.deploys)) {
+      out.deploys = d.deploys.slice(0, 20).filter(function (x) {
+        return x && isText(x.project) && isText(x.state) && isNumber(x.at);
+      });
+    }
+    return out;
+  }
 
   /** Our own repos worth showing: no forks, nothing archived or hidden, pushed in the last half year, newest first. */
   function pickRepos(list, now) {
     var out = [];
     for (var i = 0; i < list.length && out.length < REPOS; i++) {
       var r = list[i];
-      if (!r || r.fork || r.archived || HIDE.indexOf(String(r.name).toLowerCase()) >= 0) continue;
+      if (!r || !isText(r.name) || !isText(r.full_name) || !isText(r.pushed_at)) continue;
+      if (r.fork || r.archived || HIDE.indexOf(r.name.toLowerCase()) >= 0) continue;
       if (!(Date.parse(r.pushed_at || '') >= now - WEEKS * 7 * DAY)) continue;
       out.push(r);
     }
@@ -90,8 +143,11 @@ var GitHub = (function () {
   /** commit_activity for one repo; done(true) when GitHub had it, done(false) while it's still counting (202). */
   function readActivity(r, done) {
     gh('/repos/' + r.full + '/stats/commit_activity', function (status, json) {
-      if (status === 200 && isList(json)) {
-        r.weeks = json.slice(-(WEEKS + 1)).map(function (w) { return {w: w.week, d: w.days}; });
+      var weeks = status === 200 && isList(json) ? json.slice(-(WEEKS + 1)).map(function (w) {
+        return w ? {w: w.week, d: w.days} : null;
+      }) : null;
+      if (weeks && weeks.every(goodWeek)) {
+        r.weeks = weeks;
         r.activityFor = r.pushedAt;
       } else if (status === 204) {
         r.weeks = [];   // an empty repo
@@ -105,7 +161,7 @@ var GitHub = (function () {
     gh('/repos/' + r.full + '/commits?per_page=1', function (status, json) {
       if (status === 200 && isList(json) && json[0] && json[0].commit) {
         var cm = json[0].commit, who = cm.committer || cm.author || {};
-        r.last = {message: String(cm.message || '').split('\n')[0], at: Date.parse(who.date || '') || 0};
+        r.last = {message: isText(cm.message) ? cm.message.split('\n')[0] : '', at: isText(who.date) && Date.parse(who.date) || 0};
         r.lastFor = r.pushedAt;
       } else if (status === 409) {
         r.last = null;   // no commits yet
@@ -118,7 +174,8 @@ var GitHub = (function () {
   /** The languages of one repo in bytes, as GitHub's linguist counts them. */
   function readLanguages(r, done) {
     gh('/repos/' + r.full + '/languages', function (status, json) {
-      if (status === 200 && json && typeof json === 'object' && !isList(json)) r.langs = json;
+      var langs = status === 200 && goodLangs(json);
+      if (langs) r.langs = langs;
       // A refusal waits a day too; only a lost connection asks again at the next refresh.
       if (status) r.langsAt = Date.now();
       done();
@@ -132,8 +189,10 @@ var GitHub = (function () {
       if (status !== 200 || !json || !isList(json.deployments)) { done(null); return; }
       vercelProblem = '';
       done(json.deployments.map(function (d) {
-        return {project: d.name || '', production: d.target === 'production', state: d.state || d.readyState || '',
-          at: d.created || d.createdAt || 0};
+        d = d || {};
+        var state = isText(d.state) ? d.state : isText(d.readyState) ? d.readyState : '';
+        return {project: isText(d.name) ? d.name : '', production: d.target === 'production', state: state,
+          at: isNumber(d.created) ? d.created : isNumber(d.createdAt) ? d.createdAt : 0};
       }));
     });
   }
@@ -311,13 +370,13 @@ var GitHub = (function () {
     if (TOKEN || SAMPLE) {
       for (i = 0; i < d.repos.length; i++) {
         for (name in d.repos[i].langs || {}) {
-          if (!d.repos[i].langs.hasOwnProperty(name) || !(d.repos[i].langs[name] > 0)) continue;
+          if (!Object.prototype.hasOwnProperty.call(d.repos[i].langs, name) || !(d.repos[i].langs[name] > 0)) continue;
           bytes[name] = (bytes[name] || 0) + d.repos[i].langs[name];
           total += d.repos[i].langs[name];
         }
       }
       languages = [];
-      for (name in bytes) if (bytes.hasOwnProperty(name)) languages.push({name: name, bytes: bytes[name]});
+      for (name in bytes) if (Object.prototype.hasOwnProperty.call(bytes, name)) languages.push({name: name, bytes: bytes[name]});
       languages.sort(function (a, b) { return b.bytes - a.bytes; });
       if (languages.length > LANGUAGES) {
         var rest = 0;
