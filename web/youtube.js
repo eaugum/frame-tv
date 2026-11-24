@@ -423,9 +423,9 @@ var YouTube = (function () {
     var list = playlist();
     savedItems(list, token, function (saved, s1) {
       if (!saved) { failed(s1); return; }
-      allUploads(token, function (list, status) {
+      allUploads(token, function (uploaded, status) {
         if (status) { failed(status); return; }   // keep the last answer rather than half of one
-        var picked = pick(list, Date.now());
+        var picked = pick(uploaded, Date.now());
         details(saved.concat(picked), token, function (byId, s2) {
           if (!byId) { failed(s2); return; }
           keepSaved(list, saved, byId);
