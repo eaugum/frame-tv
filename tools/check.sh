@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# What CI runs (.github/workflows/check.yml). Run it before you push: the catalogues, the Samsung package and ES5 in
-# web/ (needs Python 3 and Node).
+# What CI runs (.github/workflows/check.yml). Run it before you push: the catalogues, the Samsung package, ES5 in
+# web/ and the tests (needs Python 3 and Node).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -19,5 +19,10 @@ if grep -nE '\.(includes|startsWith|endsWith|padStart|padEnd|repeat|find|findInd
   echo "web/ calls something older TVs don't have (above)." >&2
   exit 1
 fi
+
+# The tests (tools/tests/): the Python tools with unittest, web/ in Node's vm with node:test. No packages; -B keeps
+# __pycache__ out of the repo.
+python3 -B -m unittest discover -s tools/tests
+node --test tools/tests/*.test.js
 
 echo "All checks passed."
