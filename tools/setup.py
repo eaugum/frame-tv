@@ -38,6 +38,7 @@ ROOT_ACTIONS = ('status', 'apply', 'restore')
 PAGE = os.path.join(ROOT, 'tools', 'setup.html')
 SECRET = re.compile(r'_(token|key|secret)$')
 FROM_TV_PORT = 8890
+SPOTIFY_LOCK = threading.Lock()   # guards Server.spotify: one sign-in, and its port, at a time
 NOT_FROM_TV = ('tv_ip', 'sign_profile', 'setup_key')   # the Mac's own, not the TV's
 KEY_LINE = re.compile(r'^\s*([a-z_]+)\s*=(.*)$')
 # What each module's switch needs before it can be on (as Modules in web/data.js; Stasera has a default address).
@@ -368,19 +369,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not client:
             return self.send(400, {'error': 'Save spotify_client_id first.'})
         url, verifier, state = spotify_login.start(client)
-        self.server.spotify = (client, verifier, state)
+        with SPOTIFY_LOCK:
+            if self.server.spotify:   # a sign-in started again frees the port of the one before
+                spotify_login.stop(self.server.spotify[2])
+                self.server.spotify = None
+            try:   # before the page sends the browser to Spotify
+                self.server.spotify = (client, verifier, spotify_login.listen(state))
+            except spotify_login.SignInError as e:
+                return self.send(400, {'error': str(e)})
         self.send(200, {'url': url})
 
     def spotify_wait(self):
-        if not self.server.spotify:
+        with SPOTIFY_LOCK:
+            pending = self.server.spotify
+        if not pending:
             return self.send(400, {'error': 'Start the sign-in first.'})
-        client, verifier, state = self.server.spotify
+        client, verifier, listener = pending
         try:
-            token = spotify_login.refresh_token(client, spotify_login.wait_for_code(state, timeout=300), verifier)
+            token = spotify_login.refresh_token(client, spotify_login.wait_for_code(listener, timeout=300), verifier)
         except spotify_login.SignInError as e:
             return self.send(400, {'error': str(e)})
         finally:
-            self.server.spotify = None
+            with SPOTIFY_LOCK:
+                if self.server.spotify is pending:
+                    self.server.spotify = None
         try:
             webapp.write_values(self.server.config, {'spotify_refresh_token': token})
         except (OSError, ValueError) as e:   # names the file or the key, never the token
