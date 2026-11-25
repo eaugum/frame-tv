@@ -104,10 +104,28 @@
 </div></div>
 
 <script>
-const KEY = '{{KEY}}';
+/** The key comes only in the link setup.py opens (#key=...); it leaves the address bar, and this tab keeps it for a reload. */
+const KEY = (() => {
+  const m = /^#key=([\w-]+)$/.exec(location.hash);
+  if (m) history.replaceState(null, '', location.pathname + location.search);
+  try {
+    if (m) sessionStorage.setItem('setup-key', m[1]);
+    return m ? m[1] : sessionStorage.getItem('setup-key') || '';
+  } catch (e) {
+    return m ? m[1] : '';
+  }
+})();
 const $ = (id) => document.getElementById(id);
 const values = {};
-let saved = {}, busy = false;
+let saved = {}, busy = false, waiting = null;
+const timers = [];
+
+/** Without the right key the page is no use: it says where the link is, and nothing else. */
+function noKey() {
+  timers.forEach(clearInterval);
+  document.body.innerHTML = '';
+  el('p', 'lead', el('main', '', document.body), 'Open the link that tools/setup.py printed in the terminal.');
+}
 
 async function api(path, body) {
   const r = await fetch(path, {
@@ -116,18 +134,27 @@ async function api(path, body) {
     body: body === undefined ? undefined : JSON.stringify(body)
   });
   const json = await r.json().catch(() => ({}));
+  if (r.status === 403) noKey();
   if (!r.ok) throw new Error((json.problems || []).join('\n') || json.error || 'HTTP ' + r.status);
   return json;
 }
 
 function status(text, kind) {
   const s = $('status');
+  if (!s) return;   // the page is down to noKey()'s line
   s.textContent = text;
   s.className = 'status' + (kind ? ' ' + kind : '');
 }
 
+/** The fields changed since the page loaded or last saved: only these are sent, so another page's saves stay. */
+function changes() {
+  const out = {};
+  for (const k of Object.keys(values)) if (values[k] !== (saved[k] || '')) out[k] = values[k];
+  return out;
+}
+
 function dirty() {
-  return Object.keys(values).some((k) => values[k] !== (saved[k] || ''));
+  return Object.keys(changes()).length > 0;
 }
 
 function changed() {
@@ -233,16 +260,18 @@ function render(config) {
 
 async function load() {
   const config = await api('/api/config');
+  saved = {};
+  for (const s of config.sections) for (const k of s.keys) saved[k.key] = k.value;   // the file's, before a switch goes off
   render(config);
-  saved = Object.assign({}, values);
   if (config.problems.length) status(config.problems.join(' · '), 'bad');
   else status(config.exists ? 'Loaded.' : 'No config.properties yet: saving makes one.');
 }
 
 async function save() {
   try {
-    await api('/api/config', {values});
-    saved = Object.assign({}, values);
+    const sent = changes();
+    await api('/api/config', {values: sent});
+    Object.assign(saved, sent);
     status('Saved.', 'good');
     return true;
   } catch (e) {
@@ -268,6 +297,24 @@ async function spotify(field) {
 }
 
 const BUTTONS = ['save', 'install', 'root-status', 'root-apply', 'root-restore'];
+const RUNS = {install: ['build and install', 'Build and install'], root: ['the root script', 'The root script']};
+
+/** A run another page (or this one before a reload) started: the buttons wait until setup.py says it is done. */
+async function running() {
+  if (busy) return;
+  try {
+    const now = await api('/api/status');
+    if (now.running) {
+      waiting = now.running;
+      BUTTONS.forEach((id) => { $(id).disabled = true; });
+      status('Still running: ' + RUNS[waiting][0] + '. It goes on without this page.');
+    } else if (waiting) {
+      BUTTONS.forEach((id) => { $(id).disabled = false; });
+      status(RUNS[waiting][1] + (now.ok ? ' finished.' : ' stopped with an error.'), now.ok ? 'good' : 'bad');
+      waiting = null;
+    }
+  } catch (e) {}
+}
 
 /** POSTs and shows the output as it comes; the server ends it with @@DONE or @@FAILED. */
 async function stream(path, body, working, done) {
@@ -383,13 +430,15 @@ $('discard').onclick = async () => {
   fromTvAt = 0;
   status('Discarded what the TV sent.');
 };
-setInterval(fromTv, 3000);
-
 $('save').onclick = save;
 $('install').onclick = install;
 Object.keys(ROOT_ACTIONS).forEach((a) => { $('root-' + a).onclick = () => root(a); });
 window.addEventListener('beforeunload', (e) => { if (dirty()) e.preventDefault(); });
-load().catch((e) => status(e.message, 'bad'));
+if (!KEY) noKey();
+else {
+  timers.push(setInterval(fromTv, 3000), setInterval(running, 3000));
+  load().then(running).catch((e) => status(e.message, 'bad'));
+}
 </script>
 </body>
 </html>

@@ -94,7 +94,7 @@ def field(key):
     if key in webapp.SWITCHES.values():
         return {'key': key, 'kind': 'switch', 'needs': NEEDS.get(key, [])}
     if key == 'language':
-        return {'key': key, 'kind': 'choice', 'choices': ['auto'] + translate.languages()}
+        return {'key': key, 'kind': 'choice', 'choices': ['auto', 'en'] + translate.languages()}   # en: the source
     if key == 'temperature':
         return {'key': key, 'kind': 'choice', 'choices': ['auto', 'C', 'F']}
     if key == 'sign_profile':
@@ -178,9 +178,11 @@ class Server(http.server.ThreadingHTTPServer):
     def __init__(self, port, path):
         super().__init__(('127.0.0.1', port), Handler)
         self.config = path
-        self.key = secrets.token_urlsafe(24)   # a page on another site can't read it, so can't call the API
+        self.key = secrets.token_urlsafe(24)   # only in the link setup.py opens, never served
         self.spotify = None
         self.busy = threading.Lock()
+        self.running = None   # 'install' or 'root' while busy, page or not
+        self.ok = None        # how the last run ended
         self.tv = None        # the listener for "Upload config"
         self.pending = None   # what the TV sent: {values, at}
 
@@ -265,6 +267,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
         host = (self.headers.get('Host') or '').split(':')[0]
         return host in ('127.0.0.1', 'localhost')   # not a name that was pointed here (DNS rebinding)
 
+    def keyed(self):
+        return self.allowed() and secrets.compare_digest(self.headers.get('X-Setup', '').encode(),
+                                                         self.server.key.encode())
+
+    def end_headers(self):   # every answer, errors too: no other page may frame this one
+        self.send_header('X-Frame-Options', 'DENY')
+        self.send_header('Content-Security-Policy', "frame-ancestors 'none'")
+        super().end_headers()
+
     def send(self, status, body, kind='application/json'):
         data = body if isinstance(body, bytes) else (json.dumps(body) if kind == 'application/json' else body).encode()
         self.send_response(status)
@@ -280,10 +291,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         url = urllib.parse.urlparse(self.path)
         if url.path == '/':
             with open(PAGE, encoding='utf-8') as f:
-                return self.send(200, f.read().replace('{{KEY}}', self.server.key), 'text/html')
-        if url.path == '/api/from-tv' and self.headers.get('X-Setup') == self.server.key:
+                return self.send(200, f.read(), 'text/html')
+        if url.path.startswith('/api/') and not self.keyed():
+            return self.send(403, {'error': 'forbidden'})
+        if url.path == '/api/status':
+            return self.send(200, {'running': self.server.running, 'ok': self.server.ok})
+        if url.path == '/api/from-tv':
             return self.send(200, self.from_tv_changes())
-        if url.path == '/api/config' and self.headers.get('X-Setup') == self.server.key:
+        if url.path == '/api/config':
             values = read(self.server.config)
             sections = schema()
             for s in sections:
@@ -294,7 +309,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send(404, {'error': 'not found'})
 
     def do_POST(self):
-        if not self.allowed() or self.headers.get('X-Setup') != self.server.key:
+        if not self.keyed():
             return self.send(403, {'error': 'forbidden'})
         size = int(self.headers.get('Content-Length') or 0)
         try:
@@ -320,13 +335,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send(404, {'error': 'not found'})
 
     def save(self, values):
+        """Writes the fields the page changed; the rest of the file stays as it is now."""
         values = clean(values)
         if not values.get('setup_key'):
             values.pop('setup_key', None)   # a page loaded before the build made one
-        wrong = webapp.problems(values) + switched_on_without(values)
+        old = read(self.server.config)
+        wrong = webapp.problems(dict(old, **values)) + switched_on_without(dict(old, **values))
         if wrong:
             return self.send(400, {'problems': wrong})
-        old = read(self.server.config)
         if 'city' in values and values['city'] != old.get('city', '') and (old.get('latitude') or old.get('longitude')):
             values.update(latitude='', longitude='')   # a new city must not keep the old place (it would win)
         try:
@@ -400,24 +416,36 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send(200, {'token': token})
 
     def run(self, steps):
-        """Runs the commands one after another, sending the output as it comes; the last line says how it went."""
+        """Runs the commands one after another, sending the output as it comes; the last line says how it went.
+        A page that goes away doesn't stop them: their output is still read (a full pipe would stall them), not sent.
+        True when every command ended well."""
         self.send_response(200)
         self.send_header('Content-Type', 'text/plain; charset=utf-8')
         self.send_header('Cache-Control', 'no-store')
         self.end_headers()
+        page = True
+
+        def out(data):
+            nonlocal page
+            try:
+                if page:
+                    self.wfile.write(data)
+                    self.wfile.flush()
+            except OSError:   # the page is gone
+                page = False
+
         for cmd in steps:
-            self.wfile.write(('$ %s\n' % ' '.join(os.path.relpath(c, ROOT) if c.startswith(ROOT) else
-                                                  os.path.basename(c) if os.path.isabs(c) else c
-                                                  for c in cmd)).encode())
-            run = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                   stdin=subprocess.DEVNULL)
-            for line in run.stdout:
-                self.wfile.write(line)
-                self.wfile.flush()
-            if run.wait() != 0:
-                self.wfile.write(b'\n@@FAILED\n')
-                return
-        self.wfile.write(b'\n@@DONE\n')
+            out(('$ %s\n' % ' '.join(os.path.relpath(c, ROOT) if c.startswith(ROOT) else
+                                     os.path.basename(c) if os.path.isabs(c) else c for c in cmd)).encode())
+            with subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                  stdin=subprocess.DEVNULL) as run:   # waits for it, and closes the pipe
+                for line in run.stdout:
+                    out(line)
+            if run.returncode != 0:
+                out(b'\n@@FAILED\n')
+                return False
+        out(b'\n@@DONE\n')
+        return True
 
     def install(self):
         """Builds and installs."""
@@ -427,6 +455,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.send(400, {'error': 'Save tv_ip and sign_profile first.'})
         if not self.server.busy.acquire(blocking=False):
             return self.send(409, {'error': 'Something is already running.'})
+        self.server.running, self.server.ok = 'install', None
         try:
             setup = []
             url = self.server.listen_for_tv()
@@ -437,12 +466,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     except (OSError, ValueError) as e:
                         return self.send(400, {'error': 'Could not save setup_key: %s' % e})
                 setup = ['--setup', url]
-            self.run([[sys.executable, os.path.join(ROOT, 'tizen', 'build.py'), '--config', self.server.config,
-                       '--sign', profile] + setup,
-                      [sys.executable, os.path.join(ROOT, 'tizen', 'install.py'), ip]])
-        except (BrokenPipeError, ConnectionResetError):
+            self.server.ok = self.run([[sys.executable, os.path.join(ROOT, 'tizen', 'build.py'), '--config',
+                                        self.server.config, '--sign', profile] + setup,
+                                       [sys.executable, os.path.join(ROOT, 'tizen', 'install.py'), ip]])
+        except (BrokenPipeError, ConnectionResetError):   # gone before anything started
             pass
         finally:
+            self.server.running = None
             self.server.busy.release()
 
     def root(self, action):
@@ -453,11 +483,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.send(400, {'error': 'Copy tools/root/root.example.env to root.local.env and fill it in first.'})
         if not self.server.busy.acquire(blocking=False):
             return self.send(409, {'error': 'Something is already running.'})
+        self.server.running, self.server.ok = 'root', None
         try:
-            self.run([['/bin/sh', ROOT_SH, action]])
-        except (BrokenPipeError, ConnectionResetError):
+            self.server.ok = self.run([['/bin/sh', ROOT_SH, action]])
+        except (BrokenPipeError, ConnectionResetError):   # gone before anything started
             pass
         finally:
+            self.server.running = None
             self.server.busy.release()
 
 
@@ -474,7 +506,7 @@ def main():
             continue
     else:
         sys.exit('No free port from %d.' % port)
-    url = 'http://127.0.0.1:%d/' % server.server_address[1]
+    url = 'http://127.0.0.1:%d/#key=%s' % (server.server_address[1], server.key)   # the page's only way to the key
     print('Frame TV setup: %s (%s). Ctrl-C stops it.' % (url, os.path.relpath(path, ROOT)), flush=True)
     tv = server.listen_for_tv()
     if tv:
