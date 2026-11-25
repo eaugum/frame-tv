@@ -238,7 +238,7 @@ To come back to Frame TV when Art Mode is turned off, set the add-on's option `b
 
 If the city isn't found when the app is built, the build says so and the TV's time zone picks one. On the TV, the place
 is under the gear → Place. An older file may still have `latitude` and `longitude`; they work, and they win over the
-lookup.
+lookup. "Upload config" writes them too, when a place was picked on the TV.
 
 ## Set on the TV
 
@@ -251,7 +251,7 @@ These are picked on the TV. "Upload config" fills them in, so you rarely need to
 | `hide_apps` | Apps left out of Home and All Apps | The gear → Apps |
 | `home_assistant_scenes`, `_lights`, `_power`, `_laundry`, `_guest_wifi` | Home Assistant's entities | The gear → Connections → Home Assistant; see [home-assistant.md](home-assistant.md#what-the-tab-shows) |
 | `saver_minutes` | Idle minutes before the screensaver: 0 is never, empty is 15 | The gear → Screensaver and Art Mode |
-| `saver_every` | Minutes between its pictures; empty is 5 | The gear → Screensaver and Art Mode |
+| `saver_every` | Minutes between its pictures, at least 1; empty is 5 | The gear → Screensaver and Art Mode |
 | `youtube_playlist` | See [YouTube](#youtube) | The gear → Connections → YouTube |
 
 ## Installing

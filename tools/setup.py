@@ -130,7 +130,7 @@ def switched_on_without(values):
 
 def clean(values):
     """The page's values as the file's: known keys only, trimmed, on one line."""
-    known = set(k['key'] for s in schema() for k in s['keys'])
+    known = set(k['key'] for s in schema() for k in s['keys']) | set(webapp.NUMBERS)
     out = {}
     for key, value in values.items():
         if key in known:
@@ -140,7 +140,7 @@ def clean(values):
 
 def from_tv(settings):
     """What the TV sent ({name in config.js: value}) as the file's values; unknown names are left out."""
-    known = [k['key'] for s in schema() for k in s['keys'] if k['key'] not in NOT_FROM_TV]
+    known = [k['key'] for s in schema() for k in s['keys'] if k['key'] not in NOT_FROM_TV] + list(webapp.NUMBERS)
     names = {re.sub(r'_([a-z])', lambda m: m.group(1).upper(), k): k for k in known}
     out = {}
     for name, v in settings.items():
@@ -325,6 +325,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         wrong = webapp.problems(values) + switched_on_without(values)
         if wrong:
             return self.send(400, {'problems': wrong})
+        old = read(self.server.config)
+        if 'city' in values and values['city'] != old.get('city', '') and (old.get('latitude') or old.get('longitude')):
+            values.update(latitude='', longitude='')   # a new city must not keep the old place (it would win)
         try:
             webapp.write_values(self.server.config, values)
         except (OSError, ValueError) as e:   # the file is as it was

@@ -49,12 +49,19 @@ var Settings = (function () {
     if (moved) { save(); localStorage.setItem('fmtv.prefs', JSON.stringify(old)); }
   } catch (e) {}
 
+  // Minutes between the screensaver's pictures: whole, 1 to 1440 (as webapp.py): 0 would loop without a pause, a huge one overflows setTimeout.
+  function usable(key, v) {
+    if (key !== 'saverEvery') return v;
+    var n = Math.floor(Number(v));
+    return n >= 1 && n <= 1440 ? n : DEFAULTS[key];
+  }
+
   return {
     get: function (key) {
       var s = saved[key];
-      if (s && same(s.file, file(key))) return s.v;
+      if (s && same(s.file, file(key))) return usable(key, s.v);
       if (s) { delete saved[key]; save(); }   // the file changed since: it wins
-      return empty(CONFIG[key]) ? DEFAULTS[key] : CONFIG[key];
+      return usable(key, empty(CONFIG[key]) ? DEFAULTS[key] : CONFIG[key]);
     },
     set: function (key, value) { saved[key] = {v: value, file: file(key)}; save(); },
     /** Back to what the file says. */

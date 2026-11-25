@@ -24,7 +24,8 @@ MODULES = ('stasera', 'youtube', 'github', 'vercel', 'homeAssistant', 'spotify',
 
 # What's picked on the TV (the Home row, hidden apps, Home Assistant's entities...) comes back here with "Send to the
 # Mac" (AUG-1521): {key in the file: name in config.js}.
-LISTS = {'hide_apps': 'hideApps', 'shelf': 'shelf', 'home_assistant_scenes': 'homeAssistantScenes',
+LISTS = {'hide_apps': 'hideApps', 'shelf': 'shelf', 'youtube_shelf': 'youtubeShelf',
+         'home_assistant_scenes': 'homeAssistantScenes',
          'home_assistant_lights': 'homeAssistantLights', 'home_assistant_power': 'homeAssistantPower',
          'home_assistant_laundry': 'homeAssistantLaundry', 'home_assistant_guest_wifi': 'homeAssistantGuestWifi'}
 WHOLE = {'saver_minutes': 'saverMinutes', 'saver_every': 'saverEvery'}
@@ -147,7 +148,9 @@ def open_private(path):
     return os.fdopen(fd, 'wb')
 
 
-NUMBERS = ('latitude', 'longitude')   # no longer in the example, but an older file may have them
+# Not in the example, but the place picked on the TV comes back as these ("Upload config"), and an older file has them.
+NUMBERS = ('latitude', 'longitude')
+SAVER_EVERY_MAX = 1440   # a day; web/data.js has the same cap
 SWITCHES = {name: name for name in MODULES}
 SWITCHES['homeAssistant'] = 'home_assistant'
 
@@ -155,14 +158,22 @@ SWITCHES['homeAssistant'] = 'home_assistant'
 def problems(values):
     """What's wrong with these values ({key: value}), as sentences; empty when nothing is."""
     out = []
+    limits = {'latitude': 90, 'longitude': 180}
     for key in NUMBERS:
         v = values.get(key, '')
-        if v and not re.match(r'^-?\d+(\.\d+)?$', v):
+        if v and not re.fullmatch(r'-?[0-9]+(\.[0-9]+)?', v):
             out.append('%s must be a number (got "%s")' % (key, v))
+        elif v and abs(float(v)) > limits[key]:
+            out.append('%s must be between -%d and %d (got "%s")' % (key, limits[key], limits[key], v))
+    if bool(values.get('latitude')) != bool(values.get('longitude')):
+        out.append('latitude and longitude go together: set both or neither')
     for key in WHOLE:
         v = values.get(key, '')
-        if v and not v.isdigit():
+        if v and not re.fullmatch('[0-9]+', v):
             out.append('%s must be a whole number (got "%s")' % (key, v))
+    every = values.get('saver_every', '')
+    if every and re.fullmatch('[0-9]+', every) and (len(every) > 4 or not 1 <= int(every) <= SAVER_EVERY_MAX):
+        out.append('saver_every must be from 1 to %d (got "%s")' % (SAVER_EVERY_MAX, every))
     for key in SWITCHES.values():
         v = values.get(key, '').lower()
         if v not in ('', 'true', 'false'):
