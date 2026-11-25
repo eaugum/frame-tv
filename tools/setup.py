@@ -19,7 +19,6 @@ import json
 import os
 import re
 import secrets
-import shutil
 import socket
 import subprocess
 import sys
@@ -34,7 +33,6 @@ import spotify_login  # noqa: E402
 import translate  # noqa: E402
 import webapp  # noqa: E402
 
-EXAMPLE = os.path.join(ROOT, 'config.example.properties')
 ROOT_SH = os.path.join(ROOT, 'tools', 'root', 'root.sh')
 ROOT_ACTIONS = ('status', 'apply', 'restore')
 PAGE = os.path.join(ROOT, 'tools', 'setup.html')
@@ -52,7 +50,7 @@ NEEDS = {'stasera': [], 'youtube': ['youtube_client_id', 'youtube_client_secret'
 def schema():
     """config.example.properties as [{title, keys: [{key, help, kind, choices?, example}], note}]."""
     sections, section, comments = [], None, []
-    with open(EXAMPLE, encoding='utf-8') as f:
+    with open(webapp.EXAMPLE, encoding='utf-8') as f:
         for line in f:
             line = line.rstrip('\n')
             header = re.match(r'^# --- (.+?) ---$', line)
@@ -117,46 +115,7 @@ def profiles():
 
 def read(path):
     """The file's values; without the file, the example's (what saving starts from)."""
-    return webapp.read_values(path if os.path.exists(path) else EXAMPLE)
-
-
-def write(path, values):
-    """Sets each key on its own line where it is; a key the file lacks goes after the one before it in the example."""
-    if not os.path.exists(path):
-        shutil.copy(EXAMPLE, path)
-    with open(path, encoding='utf-8') as f:
-        lines = f.readlines()
-    order = [k['key'] for s in schema() for k in s['keys']]
-
-    def where(key):
-        for i, line in enumerate(lines):
-            m = KEY_LINE.match(line)
-            if m and m.group(1) == key:
-                return i
-        return -1
-
-    for key, value in values.items():
-        line = '%s=%s\n' % (key, value)
-        i = where(key)
-        if i >= 0:
-            lines[i] = line
-            continue
-        at = len(lines)
-        n = order.index(key) if key in order else len(order)
-        for prev in reversed(order[:n]):
-            if where(prev) >= 0:
-                at = where(prev) + 1
-                break
-        else:
-            for nxt in order[n + 1:]:
-                if where(nxt) >= 0:
-                    at = where(nxt)
-                    break
-        if at == len(lines) and lines and not lines[-1].endswith('\n'):
-            lines[-1] += '\n'
-        lines.insert(at, line)
-    with open(path, 'w', encoding='utf-8') as f:
-        f.writelines(lines)
+    return webapp.read_values(path if os.path.exists(path) else webapp.EXAMPLE)
 
 
 def switched_on_without(values):
@@ -366,7 +325,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         wrong = webapp.problems(values) + switched_on_without(values)
         if wrong:
             return self.send(400, {'problems': wrong})
-        write(self.server.config, values)
+        try:
+            webapp.write_values(self.server.config, values)
+        except (OSError, ValueError) as e:   # the file is as it was
+            return self.send(400, {'problems': [str(e)]})
         self.send(200, {'ok': True})
 
     def from_tv_changes(self):
@@ -391,7 +353,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         wrong = webapp.problems(values)
         if wrong:
             return self.send(400, {'problems': wrong})
-        write(self.server.config, pending['values'])
+        try:
+            webapp.write_values(self.server.config, pending['values'])
+        except (OSError, ValueError) as e:
+            return self.send(400, {'problems': [str(e)]})
         self.server.pending = None
         self.send(200, {'ok': True})
 
@@ -413,7 +378,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.send(400, {'error': str(e)})
         finally:
             self.server.spotify = None
-        write(self.server.config, {'spotify_refresh_token': token})
+        try:
+            webapp.write_values(self.server.config, {'spotify_refresh_token': token})
+        except (OSError, ValueError) as e:   # names the file or the key, never the token
+            return self.send(400, {'error': 'Signed in, but the token could not be saved: %s' % e})
         self.send(200, {'token': token})
 
     def run(self, steps):
@@ -449,7 +417,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             url = self.server.listen_for_tv()
             if url:
                 if not values.get('setup_key'):
-                    write(self.server.config, {'setup_key': secrets.token_urlsafe(24)})
+                    try:
+                        webapp.write_values(self.server.config, {'setup_key': secrets.token_urlsafe(24)})
+                    except (OSError, ValueError) as e:
+                        return self.send(400, {'error': 'Could not save setup_key: %s' % e})
                 setup = ['--setup', url]
             self.run([[sys.executable, os.path.join(ROOT, 'tizen', 'build.py'), '--config', self.server.config,
                        '--sign', profile] + setup,

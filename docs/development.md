@@ -46,7 +46,14 @@ Samsung's own CLI installer stops on a Mac without Rosetta, since it brings an I
 `python3 tizen/build.py --preview` and open `out/tizen/index.html` in the browser (arrow keys, Enter and Esc). The
 browser shows every module switched on with `true`, with sample data where something is missing (GitHub without
 `github_token` and `vercel_token`, Home Assistant, Spotify, YouTube before signing in, Art Mode). YouTube can be signed in
-from the browser too. The Stasera tab needs the browser to be linked to Stasera.
+from the browser too (with `--preview-tokens`, for the client secret). The Stasera tab needs the browser to be linked to
+Stasera.
+
+The preview leaves out every token, key and secret, so it shows the sample data. `--preview-tokens` puts your real ones
+in. Open that one as a file and don't serve `out/tizen`: then any page in the browser, or anyone on the network, could
+load `config.js`. A link or sign-in made in the preview stays in the browser's storage, which Chrome shares with every
+local HTML file. The tools write `config.properties` (at each save), `FrameTV.wgt` and `out/tizen` so that only your
+account can read them.
 
 ### Before you push
 

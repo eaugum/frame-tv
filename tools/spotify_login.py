@@ -21,34 +21,12 @@ import urllib.request
 import webbrowser
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, 'tools'))
+import webapp  # noqa: E402  (reads and writes config.properties as the build and the setup page do)
+
 PORT = 8888
 REDIRECT = 'http://127.0.0.1:%d/callback' % PORT
 SCOPES = 'user-read-playback-state user-modify-playback-state user-read-currently-playing'
-
-
-def read_value(path, key):
-    with open(path, encoding='utf-8') as f:
-        for line in f:
-            m = re.match(r'\s*%s\s*=(.*)$' % re.escape(key), line)
-            if m:
-                return m.group(1).strip().strip('"')
-    return ''
-
-
-def write_value(path, key, value):
-    """Sets key in the file: on its own line where it is, or after spotify_client_id."""
-    with open(path, encoding='utf-8') as f:
-        lines = f.readlines()
-    line = '%s=%s\n' % (key, value)
-    for i, old in enumerate(lines):
-        if re.match(r'\s*%s\s*=' % re.escape(key), old):
-            lines[i] = line
-            break
-    else:
-        at = next((i + 1 for i, old in enumerate(lines) if re.match(r'\s*spotify_client_id\s*=', old)), len(lines))
-        lines.insert(at, line)
-    with open(path, 'w', encoding='utf-8') as f:
-        f.writelines(lines)
 
 
 class SignInError(Exception):
@@ -125,9 +103,10 @@ def refresh_token(client, code, verifier):
             answer = json.load(r)
     except urllib.error.HTTPError as e:
         raise SignInError('Spotify turned down the sign-in (%d): %s' % (e.code, e.read().decode('utf-8', 'replace')))
-    if not answer.get('refresh_token'):
-        raise SignInError('Spotify gave no refresh token.')
-    return answer['refresh_token']
+    token = answer.get('refresh_token') if isinstance(answer, dict) else None
+    if not isinstance(token, str) or not re.fullmatch(r'[\x21-\x7e]+', token):   # one line, so it sets no other key
+        raise SignInError('Spotify gave no usable refresh token.')
+    return token
 
 
 def main():
@@ -135,7 +114,7 @@ def main():
     path = os.path.abspath(args[args.index('--config') + 1]) if '--config' in args else os.path.join(ROOT, 'config.properties')
     if not os.path.exists(path):
         sys.exit('No %s yet: build once (python3 tizen/build.py), then add spotify_client_id there.' % path)
-    client = read_value(path, 'spotify_client_id')
+    client = webapp.read_values(path).get('spotify_client_id', '')
     if not client:
         sys.exit('Add spotify_client_id to %s first: the app on developer.spotify.com/dashboard, with the redirect '
                  'URI %s.' % (os.path.basename(path), REDIRECT))
@@ -148,7 +127,7 @@ def main():
     except SignInError as e:
         sys.exit(str(e))
 
-    write_value(path, 'spotify_refresh_token', token)
+    webapp.write_values(path, {'spotify_refresh_token': token})
     print('Signed in: spotify_refresh_token is in %s. Build and install again:\n'
           '  python3 tizen/build.py --sign <profile> && python3 tizen/install.py <TV IP>' % os.path.basename(path))
 

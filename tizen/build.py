@@ -3,7 +3,8 @@
 
     python3 tizen/build.py                 # → FrameTV.wgt, not signed yet
     python3 tizen/build.py --sign PROFILE  # signed with a certificate profile of Samsung's Tizen tools
-    python3 tizen/build.py --preview       # also leaves the files in out/tizen/ to open index.html in a browser
+    python3 tizen/build.py --preview       # also leaves the files in out/tizen/ to open index.html in a browser,
+                                           # with sample data in place of the tokens (--preview-tokens: the real ones)
     python3 tizen/build.py --config other.properties
     python3 tizen/build.py --generic       # without config.properties: the TV's time zone picks the city (the check)
     python3 tizen/build.py --setup URL     # "Upload config" on the TV sends to URL with setup_key (tools/setup.py)
@@ -55,6 +56,7 @@ def sign(profile, package=WGT):
         made = [n for n in os.listdir(out) if n.endswith('.' + kind)]
         if run.returncode != 0 or not made:
             sys.exit('`tizen package` didn\'t sign it:\n' + (run.stdout + run.stderr).strip())
+        os.chmod(os.path.join(out, made[0]), 0o600)   # Frame TV's holds the tokens
         shutil.move(os.path.join(out, made[0]), package)
     finally:
         shutil.rmtree(out, ignore_errors=True)
@@ -102,7 +104,7 @@ def build_service(profile):
     return version
 
 
-def build(preview, config, profile):
+def build(preview, config, profile, tokens=False):
     with open(os.path.join(ROOT, 'tizen', 'config.xml'), encoding='utf-8') as f:
         manifest = f.read()
     app_id = re.search(r'<tizen:application id="([^"]+)"', manifest).group(1)
@@ -112,15 +114,19 @@ def build(preview, config, profile):
         with open(os.path.join(ROOT, 'tizen', name), 'rb') as f:
             app[name] = f.read()
 
-    with zipfile.ZipFile(WGT, 'w', zipfile.ZIP_DEFLATED) as z:
+    with webapp.open_private(WGT) as f, zipfile.ZipFile(f, 'w', zipfile.ZIP_DEFLATED) as z:
         for path in sorted(app):
             z.writestr(path, app[path])
     if profile:
         sign(profile)
 
     if preview:
-        webapp.preview(app, OUT)
-        print('Preview: open out/tizen/index.html (or serve out/tizen) in a browser.')
+        shown = dict(app)
+        if not tokens:
+            shown['config.js'] = webapp.config_js(webapp.without_secrets(config), 'tizen/build.py')
+        webapp.preview(shown, OUT)
+        print('Preview: open out/tizen/index.html in a browser, as a file (%s).' %
+              ('with your tokens: don\'t serve the folder' if tokens else 'sample data in place of the tokens'))
     print('Built %s (%s %s, %d KB, %s)' % (os.path.basename(WGT), app_id, version, os.path.getsize(WGT) // 1024,
                                            'signed with "%s"' % profile if profile else 'not signed'))
     if profile:
@@ -139,4 +145,4 @@ if __name__ == '__main__':
         config['setupUrl'] = args[args.index('--setup') + 1]
     else:
         config.pop('setupKey', None)
-    build('--preview' in args, config, profile)
+    build('--preview' in args or '--preview-tokens' in args, config, profile, '--preview-tokens' in args)

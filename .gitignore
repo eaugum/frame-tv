@@ -1,5 +1,6 @@
-# Settings with your city and Stasera address stay on your machine
-config.properties
+# Settings with your city, addresses and tokens stay on your machine (also --config other.properties)
+*.properties
+!config.example.properties
 
 # Build output
 out/
