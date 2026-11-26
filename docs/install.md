@@ -67,6 +67,12 @@ python3 tizen/build.py --sign frametv
 python3 tizen/install.py <the TV's IP>
 ```
 
+The package holds your settings with their tokens, since the app on the TV needs them. So the first install remembers
+what the TV calls itself in `known-tv.txt` (gitignored, readable only by you), and later installs stop before
+sending anything when the TV at that address calls itself something else; with a new TV, delete the file or add
+`--new-tv`. It only catches the wrong device at that address, not one made to look like your TV. After installing,
+`install.py` removes its copy of the package from the TV again.
+
 With nothing else filled in, you get the home screen with your apps, the weather and the clock. Stasera is on from the
 start, so Home offers to link it; turn it off if you don't use it. The other modules are one at a time, in
 [Modules and settings](modules.md).

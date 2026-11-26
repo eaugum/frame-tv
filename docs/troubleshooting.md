@@ -30,6 +30,9 @@ running app.
 | `` `tizen package` didn't sign it `` | The profile is missing, or its password | Check the profile name; after the folder has moved, run `tizen/add-profile.sh` |
 | `config.properties: … must be …` | A switch or number has another value | Fix the line the message names |
 | `Couldn't reach the TV on port 26101` | The TV is off, not in Developer Mode, or doesn't have this computer as Host PC IP | On the TV: Apps, 1 2 3 4 5, Developer mode on with the Mac's IP, then restart the TV. Do it again whenever the Mac gets a new address |
+| `This isn't the TV Frame TV was installed on before` | Another device answers at `tv_ip`, or it's a new TV | Check `tv_ip`. With a new TV, delete `known-tv.txt` and try again, or run `tizen/install.py` with `--new-tv`. Nothing was sent |
+| `… is still on the TV, with the settings in it` | The TV didn't let `install.py` remove its copy of the package | The next install replaces it and tries again |
+| `Stopped: the TV stopped answering` | The TV went quiet in the middle | Check that it's on, then run it again |
 | `The Frame TV app on the TV was signed with another certificate` | The update has to use the certificate of the app that's there | Use the same certificate. If that one is gone, remove the app (Apps, Settings, Frame TV, Delete), but run [Upload config](modules.md#upload-config) first |
 | `FrameTV.wgt isn't signed` | It was built without `--sign` | Build with `--sign`; `build.py` must end with `signed with "…"` |
 | `The TV didn't finish installing` | The TV refused it for another reason | Read what the TV said |

@@ -2,6 +2,9 @@
 *.properties
 !config.example.properties
 
+# The TV installed on before (tizen/install.py)
+known-tv.txt
+
 # Build output
 out/
 *.wgt
