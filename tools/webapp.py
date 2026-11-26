@@ -8,6 +8,7 @@ does that): then the TV's time zone picks the city, and Stasera is on with its d
 import json
 import os
 import re
+import secrets
 import shutil
 import sys
 import tempfile
@@ -42,14 +43,25 @@ GENERIC.update({name: '' for name in list(WHOLE.values()) + list(TEXTS.values())
 GENERIC.update({name: name == 'stasera' for name in MODULES})
 
 
+def config_path(args):
+    """The file for --config PATH, else config.properties."""
+    if '--config' in args:
+        return os.path.abspath(args[args.index('--config') + 1])
+    return os.path.join(ROOT, 'config.properties')
+
+
 def config_from_args(args):
     """The settings for these command-line arguments (--generic, --config PATH or config.properties)."""
     if '--generic' in args:
         return dict(GENERIC)
-    path = os.path.join(ROOT, 'config.properties')
-    if '--config' in args:
-        path = os.path.abspath(args[args.index('--config') + 1])
-    return read_config(path)
+    return read_config(config_path(args))
+
+
+def new_setup_key(path):
+    """A new setup_key, saved in the file (AUG-1786): "Upload config" from an app built with the one before stops."""
+    key = secrets.token_urlsafe(32)
+    write_values(path, {'setup_key': key})
+    return key
 
 
 def line_key(line):

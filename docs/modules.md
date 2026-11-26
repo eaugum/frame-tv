@@ -278,7 +278,7 @@ These are the Mac's own, for "Save, build and install" on the setup page. The ap
 |---|---|---|
 | `tv_ip` | The TV's IP address | On the TV: Settings → General → Network → Network Status → IP Settings |
 | `sign_profile` | The certificate profile that signs the app. Every update must use the same one | Made by `tizen/make-certificate.sh` (`tizen/add-profile.sh` for a certificate you already have); see [development.md](development.md#the-certificate) |
-| `setup_key` | Lets "Upload config" on the TV in | The setup page makes it at the first install; a new one needs a new install |
+| `setup_key` | Seals "Upload config" from the TV | Made new at every install from the setup page (and by `build.py --setup`), cleared by a build without `--setup`; not editable on the page |
 
 ## Upload config
 
@@ -291,3 +291,12 @@ is uninstalled, so bring it back to the file:
 
 The button is only there when the app was installed from the setup page, since that build has the Mac's address (port
 8890) and `setup_key`. A new install from the file then starts out the same, signed in.
+
+What goes across is sealed (AUG-1786): the TV first asks the setup page for a one-time value, then sends its settings
+encrypted and signed with `setup_key` (HMAC-SHA256, `tools/seal.py` and `web/seal.js`). A copy sent again, a changed
+one, or one from an app with an older key is refused. Every install from the setup page makes a new `setup_key`, so
+the app installed before can't upload any more; a build without `--setup` clears it, so then no app can.
+
+Accept writes the list the page shows, nothing else: if the TV sends again in the meantime, nothing is written and the
+new list is shown. When the TV moved Home Assistant, Art Mode or Stasera to another address, the file's token for it
+is removed ("Removed: a new address needs the token again"), unless the TV sent a token for the new address.

@@ -2967,12 +2967,17 @@
    */
   function uploadConfig() {
     var out = {};
-    Settings.keys().forEach(function (k) { if (Settings.changed(k)) out[k] = Settings.get(k); });
-    var tokens = {youtubeRefreshToken: YouTube.token(), staseraToken: Stasera.token(),
-      spotifyRefreshToken: Spotify.token()};
-    for (var k in tokens) if (tokens[k] && tokens[k] !== Settings.get(k)) out[k] = tokens[k];
+    // Each token goes only while it belongs to the address now (AUG-1787): then the setup page can keep it for a new
+    // address (AUG-1786). One removed on the TV goes as ''.
+    var tokens = {homeAssistantToken: Settings.token('homeAssistantToken'), artKey: Settings.token('artKey'),
+      staseraToken: Stasera.token(), youtubeRefreshToken: YouTube.token(), spotifyRefreshToken: Spotify.token()};
+    Settings.keys().forEach(function (k) { if (!(k in tokens) && Settings.changed(k)) out[k] = Settings.get(k); });
+    for (var k in tokens) {
+      if (tokens[k]) out[k] = tokens[k];
+      else if (Settings.changed(k) && Settings.get(k) === '') out[k] = '';
+    }
     toast(tr('Uploading config…'), 30000);
-    var x = new XMLHttpRequest(), over = false;
+    var over = false;
     function done(status) {
       if (over) return;
       over = true;
@@ -2980,12 +2985,26 @@
         status === 403 ? tr("The setup page didn't accept this TV: install the app from it again.") :
         tr("Couldn't reach the setup page. Is it running?"));
     }
-    x.open('POST', CONFIG.setupUrl + '/api/from-tv', true);
-    x.timeout = 15000;
-    x.setRequestHeader('Content-Type', 'text/plain');   // a simple request: no preflight
-    x.onreadystatechange = function () { if (x.readyState === 4) done(x.status); };
-    x.ontimeout = x.onerror = function () { done(0); };
-    x.send(JSON.stringify({key: CONFIG.setupKey, settings: out}));
+    function call(method, path, body, then) {
+      var x = new XMLHttpRequest();
+      try {
+        x.open(method, CONFIG.setupUrl + path, true);
+        x.timeout = 15000;
+        if (body) x.setRequestHeader('Content-Type', 'text/plain');   // a simple request: no preflight
+        x.onreadystatechange = function () { if (x.readyState === 4) then(x.status, x.responseText); };
+        x.ontimeout = x.onerror = function () { done(0); };
+        x.send(body || null);
+      } catch (e) { done(0); }
+    }
+    // A one-time nonce from the setup page first; then the settings sealed with it and setup_key (web/seal.js).
+    call('GET', '/api/from-tv/nonce', null, function (status, text) {
+      if (status !== 200) { done(status); return; }
+      var body;
+      try {
+        body = JSON.stringify(Seal.seal(CONFIG.setupKey, JSON.parse(text).nonce, Seal.unique(), JSON.stringify({settings: out})));
+      } catch (e) { done(0); return; }
+      call('POST', '/api/from-tv', body, done);
+    });
   }
 
   /** A row that opens a spage: OK or →. */

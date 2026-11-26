@@ -17,7 +17,9 @@ python3 tizen/install.py <the TV's IP>    # installs over Wi-Fi and opens the ap
 ```
 
 `python3 tools/setup.py` does the same from its page, with `sign_profile` and `tv_ip`. `--config other.properties` builds
-with another file.
+with another file. `--setup URL` adds "Upload config" to the app, with a new `setup_key` saved in the file (the app
+built before can't upload any more); without it, `setup_key` is cleared. The wire format is described in
+`tools/seal.py`.
 
 The first time, `python3 tizen/build.py` makes `config.properties` (gitignored) from `config.example.properties`.
 
@@ -73,6 +75,7 @@ account can read them.
 | `web/art.js` | The buttons to the Frame Art add-on, and Frame TV's events for its log |
 | `web/youtube.js` | YouTube: the sign-in (device flow), the playlist and the subscriptions from the YouTube Data API, with the quota in mind |
 | `web/data.js` | The weather (Open-Meteo), the streaming services' apps, the modules and the settings |
+| `web/seal.js` | SHA-256 and HMAC in ES5, to seal "Upload config" (opened by `tools/seal.py`) |
 | `i18n/` | The text in English and Norwegian |
 | `tizen/` | Building, signing and installing over SDB (without Samsung's `sdb`) |
 | `homeassistant/` | The HA package: `sensor.frame_tv`, and automations that notify on the TV and dim the lights when a movie starts |

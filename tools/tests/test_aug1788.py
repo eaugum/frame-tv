@@ -194,8 +194,8 @@ class SetupPage(Folder):
 
     def test_accepting_an_upload_with_half_an_emoji(self):
         before = self.content()
-        h = self.handler({'values': setup.from_tv({'staseraName': 'Stue \ud83d'}), 'at': 0})
-        h.from_tv_accept()
+        h = self.handler({'values': setup.from_tv({'staseraName': 'Stue \ud83d'}), 'at': 0, 'upload': 'u-1788'})
+        h.from_tv_accept(h.shown())   # the list as the page showed it (AUG-1786)
         self.assertEqual(h.answers[0][0], 400)
         self.assertUntouched(before)
 
@@ -218,19 +218,15 @@ class SetupPage(Folder):
         self.assertUntouched(before)
 
     def test_a_setup_key_that_cant_be_saved(self):
-        with open(self.path, 'a', encoding='utf-8') as f:
-            f.write('tv_ip=192.0.2.10\nsign_profile=fake\nsetup_key=\n')
+        # build.py --setup makes the new setup_key since AUG-1786: when it can't be saved, it stops before building.
         before = self.content()
         self.read_only()
-        h = self.handler()
-        h.server.busy = threading.Lock()
-        h.server.listen_for_tv.return_value = 'http://192.0.2.1:8890'
-        h.run = mock.Mock()
-        h.install()
-        self.assertEqual(h.answers[0][0], 400)
-        self.assertTrue(h.answers[0][1]['error'])
-        h.run.assert_not_called()
-        self.assertFalse(h.server.busy.locked())
+        run = subprocess.run([sys.executable, '-B', os.path.join(ROOT, 'tizen', 'build.py'), '--config', self.path,
+                              '--setup', 'http://192.0.2.1:8890'], capture_output=True, text=True, timeout=60)
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn('Could not save a new setup_key', run.stderr)
+        self.assertNotIn('Built', run.stdout)
+        self.assertNotIn('FAKE', run.stdout + run.stderr)
         self.assertUntouched(before)
 
 class SpotifyAnswer(unittest.TestCase):

@@ -2,13 +2,11 @@
 
 Fake values in temporary folders; the servers listen on 127.0.0.1 and nothing leaves this Mac.
 """
-import http.client
 import json
 import os
 import shutil
 import sys
 import tempfile
-import threading
 import unittest
 from unittest import mock
 
@@ -16,10 +14,8 @@ sys.dont_write_bytecode = True
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
-import setup  # noqa: E402
 import webapp  # noqa: E402
-
-KEY = 'FAKE-SETUP-1791'
+from test_aug1786 import KEY, Live  # noqa: E402  (the servers, and the TV's sealed upload)
 
 
 class Config(unittest.TestCase):
@@ -67,33 +63,13 @@ class Settings(Config):
         self.assertEqual((config['latitude'], config['longitude'], config['city']), ('60.39', '5.32', 'Springfield'))
 
 
-class Upload(Config):
-    """The TV's upload to a real setup server, accepted on the page's API."""
+class Upload(Live):
+    """The TV's upload (sealed, AUG-1786) to a real setup server, accepted on the page's API."""
 
-    def setUp(self):
-        super().setUp()
-        self.write(setup_key=KEY)
-        self.server = setup.Server(0, self.path)
-        self.tv = None
-        with mock.patch.object(setup, 'FROM_TV_PORT', 0):
-            self.tv = setup.FromTVServer('127.0.0.1', self.server)
-        for s in (self.server, self.tv):
-            threading.Thread(target=s.serve_forever, daemon=True).start()
-            self.addCleanup(s.server_close)
-            self.addCleanup(s.shutdown)
+    values = {'setup_key': KEY}
 
-    def call(self, srv, method, path, body=None, headers=None):
-        c = http.client.HTTPConnection('127.0.0.1', srv.server_address[1], timeout=10)
-        c.request(method, path, json.dumps(body) if body is not None else None, headers or {})
-        r = c.getresponse()
-        return r.status, json.loads(r.read() or b'{}')
-
-    def upload(self, settings):
-        status, _ = self.call(self.tv, 'POST', '/api/from-tv', {'key': KEY, 'settings': settings})
-        self.assertEqual(status, 200)
-
-    def accept(self):
-        return self.call(self.server, 'POST', '/api/from-tv/accept', {}, {'X-Setup': self.server.key})
+    def write(self, **values):
+        webapp.write_values(self.path, values)
 
     def test_youtube_shelf_and_the_place_survive_upload_and_a_new_build(self):
         # What the TV sends (names as in config.js; the place's numbers are strings, as Open-Meteo's are).

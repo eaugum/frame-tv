@@ -11,9 +11,11 @@ order. Only Python's standard library.
 is there.
 
 "Upload config" on the TV (AUG-1521): with tv_ip set, it also listens on this Mac's address on the TV's network, on
-port 8890, for that one call, with setup_key. The page shows what came and writes it into the file when accepted.
+port 8890, for that one call: a one-time nonce, then the settings sealed with setup_key (AUG-1786, tools/seal.py). The
+page shows what came and writes exactly that into the file when accepted.
 """
 import glob
+import hashlib
 import http.server
 import json
 import os
@@ -29,6 +31,7 @@ import webbrowser
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
+import seal  # noqa: E402
 import spotify_login  # noqa: E402
 import translate  # noqa: E402
 import webapp  # noqa: E402
@@ -48,6 +51,19 @@ NEEDS = {'stasera': [], 'youtube': ['youtube_client_id', 'youtube_client_secret'
          'spotify': ['spotify_client_id', 'spotify_refresh_token'], 'art': ['art_url']}
 # Each address and the token the TV sends there (AUG-1787; the TV keeps a token to the address it came with).
 TOKEN_AT = (('home_assistant_url', 'home_assistant_token'), ('art_url', 'art_key'), ('stasera_url', 'stasera_token'))
+DEFAULT_AT = {'stasera_url': 'https://www.stasera.app'}   # an empty address in the file (as DEFAULTS in web/data.js)
+ORIGIN = re.compile(r'^\s*(https?://[^/?#\\\s]+)(?:[/?#\\]|\s*$)', re.I)   # as Settings.origin in web/data.js
+REMOVED = 'Removed: a new address needs the token again'
+AGAIN = 'The TV sent again while this was shown: look at the list again before accepting.'
+# "Upload config" (AUG-1786): what a request may take, and for how long.
+UPLOAD_MAX = 256 * 1024     # bytes of body from the TV
+PAGE_MAX = 1024 * 1024      # bytes of body from the page
+BODY_SECONDS = 10           # to read a whole body
+REQUEST_SECONDS = 15        # for the TV's whole request, headers and all
+IDLE_SECONDS = 5            # without a byte, in the headers or the body
+TV_CONNECTIONS = 8          # at once on the TV's port; more are closed at once
+NONCE_SECONDS = 60          # a nonce is good for this long, and once
+NONCES_KEPT = 16            # the newest ones; an older one goes
 
 
 def schema():
@@ -101,6 +117,8 @@ def field(key):
         return {'key': key, 'kind': 'choice', 'choices': ['auto', 'C', 'F']}
     if key == 'sign_profile':
         return {'key': key, 'kind': 'choice', 'choices': [''] + profiles()}
+    if key == 'setup_key':   # made new at every install (AUG-1786); the page never has it
+        return {'key': key, 'kind': 'fixed', 'text': 'New at every install'}
     if SECRET.search(key):
         return {'key': key, 'kind': 'secret'}
     return {'key': key, 'kind': 'text'}
@@ -171,6 +189,77 @@ def from_tv(settings):
     return clean(out)
 
 
+def origin(url):
+    """An address's scheme, host and port, lower case; '' for one that can't be read."""
+    m = ORIGIN.match(url or '')
+    return m.group(1).lower() if m else ''
+
+
+def masked(token):
+    return '••••' + token[-4:]
+
+
+def changes(file, tv):
+    """What the TV sent that differs from the file, as [{key, file, tv, secret, token?}] (the raw values).
+
+    An address the TV moved to another origin takes its token along only when the TV sent one for it (the TV sends a
+    token only while it belongs to its address now). Otherwise the file's token is removed: it was for the old address.
+    Those rows have token: 'removed' or 'kept'."""
+    out = [{'key': k, 'file': file.get(k, ''), 'tv': v, 'secret': bool(SECRET.search(k))}
+           for k, v in tv.items() if v != file.get(k, '')]
+    for url, token in TOKEN_AT:
+        if url not in tv:
+            continue
+        new, old = tv[url] or DEFAULT_AT.get(url, ''), file.get(url) or DEFAULT_AT.get(url, '')
+        if origin(new) == origin(old) and (origin(new) or new == old):   # no origin is never the same one
+            continue
+        row = [c for c in out if c['key'] == token]
+        if tv.get(token):
+            for c in row:
+                c['token'] = 'kept'
+        elif file.get(token):
+            out = [c for c in out if c['key'] != token] + [
+                {'key': token, 'file': file[token], 'tv': '', 'secret': True, 'token': 'removed'}]
+    return out
+
+
+def body_of(handler, cap):
+    """The request's body: Content-Length, a number from 0 to cap, read within BODY_SECONDS and with no pause of
+    IDLE_SECONDS; else seal.Refused."""
+    if handler.headers.get('Transfer-Encoding'):
+        raise seal.Refused(411, 'length required')   # chunked isn't read here
+    lengths = handler.headers.get_all('Content-Length') or []
+    if not lengths:
+        raise seal.Refused(411, 'length required')
+    if len(lengths) > 1 or not re.fullmatch(r'[0-9]{1,12}', lengths[0].strip()):
+        raise seal.Refused(400, 'bad length')
+    left = int(lengths[0].strip())
+    if left > cap:
+        raise seal.Refused(413, 'too large')
+    deadline, chunks, sock = time.monotonic() + BODY_SECONDS, [], handler.connection
+    before = sock.gettimeout()
+    try:
+        while left:
+            wait = deadline - time.monotonic()
+            if wait <= 0:
+                raise seal.Refused(408, 'too slow')
+            sock.settimeout(min(wait, IDLE_SECONDS))
+            try:
+                chunk = handler.rfile.read1(min(left, 65536))
+            except OSError:   # the time ran out, or the connection was cut
+                raise seal.Refused(408, 'too slow')
+            if not chunk:
+                raise seal.Refused(400, 'cut short')
+            chunks.append(chunk)
+            left -= len(chunk)
+    finally:
+        try:
+            sock.settimeout(before)
+        except OSError:
+            pass
+    return b''.join(chunks)
+
+
 def address_towards(ip):
     """This Mac's address on the network that reaches ip, or None (nothing is sent)."""
     try:
@@ -193,7 +282,26 @@ class Server(http.server.ThreadingHTTPServer):
         self.running = None   # 'install' or 'root' while busy, page or not
         self.ok = None        # how the last run ended
         self.tv = None        # the listener for "Upload config"
-        self.pending = None   # what the TV sent: {values, at}
+        self.pending = None   # what the TV sent: {values, at, upload}
+        self.nonces = {}      # for "Upload config": {nonce: when it expires}, the newest NONCES_KEPT
+        self.nonce_lock = threading.Lock()
+
+    def nonce(self):
+        """A new one-time nonce for the TV."""
+        with self.nonce_lock:
+            now = time.monotonic()
+            self.nonces = {n: t for n, t in self.nonces.items() if t > now}
+            while len(self.nonces) >= NONCES_KEPT:
+                del self.nonces[min(self.nonces, key=self.nonces.get)]
+            n = secrets.token_hex(16)
+            self.nonces[n] = now + NONCE_SECONDS
+            return n
+
+    def use_nonce(self, n):
+        """Whether n is one of ours, not used and not expired; it can't be used again either way."""
+        with self.nonce_lock:
+            expires = self.nonces.pop(n, None)
+            return expires is not None and expires > time.monotonic()
 
     def listen_for_tv(self):
         """The address the TV sends to, listening there; None without tv_ip or when the port is taken."""
@@ -216,52 +324,114 @@ class Server(http.server.ThreadingHTTPServer):
 
 
 class FromTVServer(http.server.ThreadingHTTPServer):
+    """The TV's port: at most TV_CONNECTIONS at once, each cut after REQUEST_SECONDS by one reaper thread."""
     daemon_threads = True
 
     def __init__(self, ip, setup):
         super().__init__((ip, FROM_TV_PORT), FromTV)
         self.setup = setup
         self.url = 'http://%s:%d' % (ip, FROM_TV_PORT)
+        self.open = {}   # {socket: when it came}
+        self.open_lock = threading.Lock()
+        self.closed = threading.Event()
+        threading.Thread(target=self.reap, daemon=True).start()
+
+    def verify_request(self, request, client_address):
+        with self.open_lock:
+            if len(self.open) >= TV_CONNECTIONS:
+                return False   # socketserver closes it now
+            self.open[request] = time.monotonic()
+            return True
+
+    def shutdown_request(self, request):
+        with self.open_lock:
+            self.open.pop(request, None)
+        super().shutdown_request(request)
+
+    def reap(self):
+        """Cuts what a TV, or anyone sending a byte now and then, keeps open past REQUEST_SECONDS."""
+        while not self.closed.wait(min(0.5, REQUEST_SECONDS / 4)):
+            with self.open_lock:
+                late = [r for r, at in self.open.items() if time.monotonic() - at > REQUEST_SECONDS]
+            for r in late:
+                try:
+                    r.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+
+    def server_close(self):
+        self.closed.set()
+        super().server_close()
+
+    def handle_error(self, request, client_address):
+        print('"Upload config": a request from %s was cut (%s).' % (client_address[0], sys.exc_info()[0].__name__),
+              flush=True)
 
 
 class FromTV(http.server.BaseHTTPRequestHandler):
-    """The TV's "Upload config": one POST, with setup_key in the body (text/plain, so the TV skips the preflight)."""
+    """The TV's "Upload config": GET a nonce, then POST the settings sealed with it and setup_key (tools/seal.py), as
+    text/plain so the TV skips the preflight. The whole request has REQUEST_SECONDS, and IDLE_SECONDS without a byte."""
     server: FromTVServer
+    timeout = IDLE_SECONDS
 
     def log_message(self, *args):
         pass
+
+    def finish(self):
+        try:
+            super().finish()
+        except OSError:
+            pass
 
     def reply(self, status, body=None):
         data = json.dumps(body or {}).encode()
         self.send_response(status)
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(data)))
+        self.send_header('Cache-Control', 'no-store')
+        if status >= 400:
+            self.send_header('Connection', 'close')
         self.end_headers()
         self.wfile.write(data)
 
     def do_OPTIONS(self):
         self.reply(204)
 
+    def key(self):
+        return read(self.server.setup.config).get('setup_key', '')
+
+    def do_GET(self):
+        if urllib.parse.urlparse(self.path).path != '/api/from-tv/nonce':
+            return self.reply(404, {'error': 'not found'})
+        if not self.key():
+            return self.reply(403, {'error': 'no setup_key: install from the setup page'})
+        self.reply(200, {'v': seal.VERSION, 'nonce': self.server.setup.nonce()})
+
     def do_POST(self):
         if urllib.parse.urlparse(self.path).path != '/api/from-tv':
             return self.reply(404, {'error': 'not found'})
-        size = int(self.headers.get('Content-Length') or 0)
-        if size > 256 * 1024:
-            return self.reply(413, {'error': 'too large'})
         try:
-            body = json.loads(self.rfile.read(size) or b'{}')
-        except ValueError:
+            body = json.loads(body_of(self, UPLOAD_MAX) or b'{}')
+        except seal.Refused as e:
+            return self.reply(e.status, {'error': str(e)})
+        except (ValueError, RecursionError):   # RecursionError: nested too deep
             return self.reply(400, {'error': 'not JSON'})
-        key = read(self.server.setup.config).get('setup_key', '')
-        sent = body.get('key') if isinstance(body, dict) else None
-        if not key or not isinstance(sent, str) or not secrets.compare_digest(sent, key):
-            return self.reply(403, {'error': 'wrong key'})
-        if not isinstance(body.get('settings'), dict):
-            return self.reply(400, {'error': 'no settings'})
-        self.server.setup.pending = {'values': from_tv(body['settings']), 'at': time.time()}
+        key = self.key()
+        if isinstance(body, dict) and 'key' in body and 'v' not in body:
+            return self.reply(403, {'error': 'an app from before AUG-1786: install it again'})
+        try:
+            if not key:
+                raise seal.Refused(403, 'no setup_key')
+            plain = seal.open_sealed(key, body)
+            if not self.server.setup.use_nonce(body['n']):
+                return self.reply(410, {'error': 'stale or used nonce'})
+            settings = seal.settings_of(plain)
+        except seal.Refused as e:
+            return self.reply(e.status, {'error': str(e)})
+        self.server.setup.pending = {'values': from_tv(settings), 'at': time.time(), 'upload': secrets.token_hex(16)}
         print('The TV sent its settings: accept them on the setup page.', flush=True)
         self.reply(200, {'ok': True})
 
@@ -312,7 +482,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             sections = schema()
             for s in sections:
                 for k in s['keys']:
-                    k['value'] = values.get(k['key'], '')
+                    k['value'] = '' if k['kind'] == 'fixed' else values.get(k['key'], '')
             return self.send(200, {'path': self.server.config, 'exists': os.path.exists(self.server.config),
                                    'sections': sections, 'problems': webapp.problems(values)})
         self.send(404, {'error': 'not found'})
@@ -320,11 +490,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.keyed():
             return self.send(403, {'error': 'forbidden'})
-        size = int(self.headers.get('Content-Length') or 0)
         try:
-            body = json.loads(self.rfile.read(size) or b'{}')
-        except ValueError:
+            body = json.loads(body_of(self, PAGE_MAX) or b'{}')
+        except seal.Refused as e:
+            self.close_connection = True
+            return self.send(e.status, {'error': str(e)})
+        except (ValueError, RecursionError):
             return self.send(400, {'error': 'not JSON'})
+        if not isinstance(body, dict):
+            return self.send(400, {'error': 'not an object'})
         route = urllib.parse.urlparse(self.path).path
         if route == '/api/config':
             return self.save(body.get('values') or {})
@@ -337,8 +511,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if route == '/api/root':
             return self.root(body.get('action'))
         if route == '/api/from-tv/accept':
-            return self.from_tv_accept()
+            return self.from_tv_accept(body)
         if route == '/api/from-tv/discard':
+            pending = self.server.pending
+            if pending and body.get('upload') != pending['upload']:
+                return self.send(409, {'error': AGAIN})
             self.server.pending = None
             return self.send(200, {'ok': True})
         self.send(404, {'error': 'not found'})
@@ -346,8 +523,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def save(self, values):
         """Writes the fields the page changed; the rest of the file stays as it is now."""
         values = clean(values)
-        if not values.get('setup_key'):
-            values.pop('setup_key', None)   # a page loaded before the build made one
+        values.pop('setup_key', None)   # only an install makes one
         old = read(self.server.config)
         wrong = webapp.problems(dict(old, **values)) + switched_on_without(dict(old, **values))
         if wrong:
@@ -363,29 +539,48 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send(200, {'ok': True})
 
     def from_tv_changes(self):
-        """What the TV sent that differs from the file: {at, changes: [{key, file, tv, secret}]}, or {}."""
-        pending = self.server.pending
-        if not pending:
+        """What the TV sent that differs from the file, as the page shows it:
+        {at, upload, id, changes: [{key, file, tv, secret, token?}]}, or {}. id names exactly this list."""
+        shown = self.shown()
+        if not shown:
             return {}
-        values = read(self.server.config)
-        changes = [{'key': k, 'file': values.get(k, ''), 'tv': v, 'secret': bool(SECRET.search(k))}
-                   for k, v in pending['values'].items() if v != values.get(k, '')]
-        return {'at': pending['at'], 'changes': changes}
+        rows = []
+        for c in shown['changes']:
+            c = dict(c)
+            if c.get('token'):   # a token that follows an address: only its last four
+                c['file'] = masked(c['file']) if c['file'] else ''
+                c['tv'] = REMOVED if c['token'] == 'removed' else masked(c['tv'])
+            rows.append(c)
+        return dict(shown, changes=rows)
 
-    def from_tv_accept(self):
+    def shown(self):
         pending = self.server.pending
         if not pending:
+            return None
+        rows = changes(read(self.server.config), pending['values'])
+        digest = hashlib.sha256(json.dumps([pending['upload'], rows], sort_keys=True).encode()).hexdigest()[:32]
+        return {'at': pending['at'], 'upload': pending['upload'], 'id': digest, 'changes': rows}
+
+    def from_tv_accept(self, body):
+        """Writes the list the page showed (its id), and nothing when another came or the file changed since."""
+        shown = self.shown()
+        if not shown:
             return self.send(400, {'error': 'Nothing from the TV.'})
-        values = read(self.server.config)
-        values.update(pending['values'])
+        if body.get('upload') != shown['upload']:
+            return self.send(409, {'error': AGAIN})
+        if body.get('id') != shown['id']:
+            return self.send(409, {'error': 'The file changed while this was shown: look at the list again before '
+                                            'accepting.'})
+        file, write = read(self.server.config), {c['key']: c['tv'] for c in shown['changes']}
+        values = dict(file, **write)
         for switch, needs in NEEDS.items():   # a switch the file can't have on: it stays as the file has it
-            if switch in pending['values'] and values.get(switch) == 'true' and not all(values.get(k) for k in needs):
-                del pending['values'][switch]
-        wrong = webapp.problems(values)
+            if switch in write and values.get(switch) == 'true' and not all(values.get(k) for k in needs):
+                del write[switch]
+        wrong = webapp.problems(dict(file, **write))
         if wrong:
             return self.send(400, {'problems': wrong})
         try:
-            webapp.write_values(self.server.config, pending['values'])
+            webapp.write_values(self.server.config, write)
         except (OSError, ValueError) as e:
             return self.send(400, {'problems': [str(e)]})
         self.server.pending = None
@@ -468,15 +663,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.send(409, {'error': 'Something is already running.'})
         self.server.running, self.server.ok = 'install', None
         try:
-            setup = []
             url = self.server.listen_for_tv()
-            if url:
-                if not values.get('setup_key'):
-                    try:
-                        webapp.write_values(self.server.config, {'setup_key': secrets.token_urlsafe(24)})
-                    except (OSError, ValueError) as e:
-                        return self.send(400, {'error': 'Could not save setup_key: %s' % e})
-                setup = ['--setup', url]
+            setup = ['--setup', url] if url else []   # build.py makes a new setup_key: the one before stops working
             self.server.ok = self.run([[sys.executable, os.path.join(ROOT, 'tizen', 'build.py'), '--config',
                                         self.server.config, '--sign', profile] + setup,
                                        [sys.executable, os.path.join(ROOT, 'tizen', 'install.py'), ip]])

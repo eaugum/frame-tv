@@ -83,6 +83,7 @@ start, so Home offers to link it; turn it off if you don't use it. The other mod
 - **Make it the first thing you see:** see "The Home button opens Smart Hub" in
   [Troubleshooting](troubleshooting.md#on-the-tv): without root, Autorun Last App; with root, the Home button itself.
 - **If the Mac gets a new address,** or the TV stops answering after one of its own updates, go through step 2 again.
-- **Back up what's set on the TV** with [Upload config](modules.md#upload-config).
+- **Back up what's set on the TV** with [Upload config](modules.md#upload-config). Each install from the setup page
+  gives the app a new `setup_key` for it, and the one before stops working.
 
 If something stops, [Troubleshooting](troubleshooting.md#building-and-installing) has what each message means.

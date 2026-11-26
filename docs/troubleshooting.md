@@ -81,15 +81,20 @@ Tokens are much easier to paste on the Mac.
 you ran [Upload config](modules.md#upload-config) earlier; otherwise, set them again.
 
 **"Upload config" isn't there.** The app wasn't built by the setup page: only "Save, build and install" puts the Mac's
-address and the key in it, and `tizen/build.py` on its own leaves them out. It's also missing if port 8890 was taken
-during that install.
+address and the key in it, and `tizen/build.py` on its own leaves them out (and clears `setup_key`, so the app before
+can't upload either). It's also missing if port 8890 was taken during that install.
 
 **"Couldn't reach the setup page. Is it running?"** Start `python3 tools/setup.py`, with `tv_ip` set, and have the Mac
 on the same network as the TV. If the Mac has a new address, install from the setup page again. If the terminal running
 `setup.py` says `"Upload config" is off`, port 8890 is taken.
 
 **"The setup page didn't accept this TV: install the app from it again."** `setup_key` has changed since the app was
-installed.
+installed: every install from the setup page (or `build.py --setup`) makes a new one, so after an install that stopped
+halfway the app on the TV still has the one before. Install from the setup page again.
+
+**"Couldn't reach the setup page" right after it worked.** The TV's one-time value from the setup page lasts a minute
+and works once; the TV asks for a new one each time, so just choose Upload config again. A setup page restarted in
+between forgets the values it gave out.
 
 **The screensaver isn't Art Mode.** Frame TV shows its own when the add-on doesn't answer, refuses the key, or can't get
 the TV into Art Mode; that can take up to a minute. With `switch.frame_art_screensaver` off there's no screensaver at

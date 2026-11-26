@@ -55,6 +55,9 @@
   #fromtv th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 10px 6px 0; }
   #fromtv td { border-top: 1px solid var(--line); padding: 8px 10px 8px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; vertical-align: top; }
   #fromtv td.was { color: var(--muted); }
+  #fromtv tr.warn td { background: #2a2113; }
+  #fromtv td.warn { color: var(--accent); font-family: inherit; }
+  .fixed { color: var(--muted); font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; padding-top: 8px; }
   #fromtv .actions { display: flex; gap: 10px; padding-bottom: 16px; }
   #root .actions { display: flex; gap: 10px; flex-wrap: wrap; padding-bottom: 14px; }
   @media (max-width: 640px) { .field { grid-template-columns: 1fr; } .field .help { grid-column: 1; } }
@@ -226,7 +229,7 @@ function render(config) {
   $('path').textContent = config.path.split('/').pop();
   const root = $('sections');
   root.innerHTML = '';
-  for (const s of config.sections) for (const k of s.keys) values[k.key] = k.value;   // the switches look ahead
+  for (const s of config.sections) for (const k of s.keys) if (k.kind !== 'fixed') values[k.key] = k.value;   // the switches look ahead
   for (const s of config.sections) {
     const sec = el('section', '', root);
     const [title, ...rest] = s.title.split(': ');
@@ -238,6 +241,7 @@ function render(config) {
       el('label', '', row, k.key);
       const control = el('div', 'control', row);
       if (k.kind === 'switch') onOff(control, k.key, k.needs);
+      else if (k.kind === 'fixed') el('span', 'fixed', control, k.text);   // setup_key: not the page's to change
       else if (k.kind === 'choice') {
         const sel = el('select', '', control);
         const choices = k.choices.includes(k.value) ? k.choices : k.choices.concat([k.value]);
@@ -261,7 +265,7 @@ function render(config) {
 async function load() {
   const config = await api('/api/config');
   saved = {};
-  for (const s of config.sections) for (const k of s.keys) saved[k.key] = k.value;   // the file's, before a switch goes off
+  for (const s of config.sections) for (const k of s.keys) if (k.kind !== 'fixed') saved[k.key] = k.value;   // the file's, before a switch goes off
   render(config);
   if (config.problems.length) status(config.problems.join(' · '), 'bad');
   else status(config.exists ? 'Loaded.' : 'No config.properties yet: saving makes one.');
@@ -380,55 +384,69 @@ function cell(row, value, secret, cls) {
   };
 }
 
-let fromTvAt = 0;
+let shown = null;   // the list on the page: {upload, id}; Accept and Discard name it
 
-/** Asks every few seconds whether the TV has sent something. */
+/** Asks every few seconds whether the TV has sent something; a new list (another id) replaces the one shown. */
 async function fromTv() {
   try {
     const got = await api('/api/from-tv');
     const box = $('fromtv');
-    if (!got.at || !got.changes.length) {
+    if (!got.upload || !got.changes.length) {
       box.style.display = 'none';
-      if (got.at) await api('/api/from-tv/discard', {});   // nothing new: the file has it all
-      if (got.at && got.at !== fromTvAt) status('The TV sent its settings: the file has them all already.', 'good');
-      fromTvAt = got.at || 0;
-      return;
+      if (got.upload) await api('/api/from-tv/discard', {upload: got.upload});   // nothing new: the file has it all
+      if (got.upload && !(shown && shown.upload === got.upload)) status('The TV sent its settings: the file has them all already.', 'good');
+      shown = null;
+      return false;
     }
-    if (got.at === fromTvAt) return;
-    fromTvAt = got.at;
+    if (shown && got.id === shown.id) return false;
+    shown = {upload: got.upload, id: got.id};
     const body = box.querySelector('tbody');
     body.innerHTML = '';
     for (const c of got.changes) {
-      const row = el('tr', '', body);
+      const row = el('tr', c.token === 'removed' ? 'warn' : '', body);
       el('td', '', row, c.key);
+      if (c.token) {   // a token that follows an address: the server sends only its last four
+        el('td', 'was', row, c.file || '—');
+        el('td', c.token === 'removed' ? 'warn' : '', row, c.tv);
+        continue;
+      }
       cell(row, c.file, c.secret, 'was');
       cell(row, c.tv, c.secret);
     }
     box.style.display = 'block';
     box.scrollIntoView({behavior: 'smooth', block: 'start'});
     status('The TV sent its settings: accept them or discard them.');
-  } catch (e) {}
+    return true;
+  } catch (e) { return false; }
 }
 
 async function acceptFromTv() {
+  if (!shown) return;
   if (dirty() && !confirm('Accepting reloads the page from the file, and your unsaved changes here are lost.')) return;
   try {
-    await api('/api/from-tv/accept', {});
+    await api('/api/from-tv/accept', shown);
     $('fromtv').style.display = 'none';
-    fromTvAt = 0;
+    shown = null;
     await load();
     status('Saved what the TV sent into the file.', 'good');
   } catch (e) {
+    await fromTv();   // the list now, in place of the one that was shown
     status(e.message, 'bad');
   }
 }
 
 $('accept').onclick = acceptFromTv;
 $('discard').onclick = async () => {
-  await api('/api/from-tv/discard', {}).catch(() => {});
-  $('fromtv').style.display = 'none';
-  fromTvAt = 0;
-  status('Discarded what the TV sent.');
+  if (!shown) return;
+  try {
+    await api('/api/from-tv/discard', {upload: shown.upload});
+    $('fromtv').style.display = 'none';
+    shown = null;
+    status('Discarded what the TV sent.');
+  } catch (e) {
+    await fromTv();
+    status(e.message, 'bad');
+  }
 };
 $('save').onclick = save;
 $('install').onclick = install;

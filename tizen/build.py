@@ -7,7 +7,9 @@
                                            # with sample data in place of the tokens (--preview-tokens: the real ones)
     python3 tizen/build.py --config other.properties
     python3 tizen/build.py --generic       # without config.properties: the TV's time zone picks the city (the check)
-    python3 tizen/build.py --setup URL     # "Upload config" on the TV sends to URL with setup_key (tools/setup.py)
+    python3 tizen/build.py --setup URL     # "Upload config" on the TV sends to URL (tools/setup.py), sealed with a
+                                           # new setup_key, saved in the config: an app built before can't upload.
+                                           # Without --setup the config's setup_key is cleared: no app can upload
 
 The home screen (web/) with tizen/config.xml and tizen/icon.png, in a zip as Tizen Studio makes it. TVs only install
 signed packages: --sign uses `tizen package` from tizen-studio/ (or Tizen Studio elsewhere) with a profile made there.
@@ -135,14 +137,27 @@ def build(preview, config, profile, tokens=False):
               'No .NET 6 (tizen/get-tools.sh), so no FrameTVService.tpk: the TV tab shows less.')
 
 
-if __name__ == '__main__':
-    args = sys.argv[1:]
+def main(args):
     profile = args[args.index('--sign') + 1] if '--sign' in args else None
     config = webapp.config_from_args(args)
-    if '--setup' in args:
-        if not config.get('setupKey'):
-            sys.exit('--setup needs setup_key in the config.')
+    if '--setup' in args:   # a new setup_key every time: an app built before can't upload any more (AUG-1786)
+        if '--generic' in args:
+            sys.exit('--setup needs a config file to keep setup_key in, not --generic.')
+        try:
+            config['setupKey'] = webapp.new_setup_key(webapp.config_path(args))
+        except (OSError, ValueError) as e:
+            sys.exit('Could not save a new setup_key: %s' % e)
         config['setupUrl'] = args[args.index('--setup') + 1]
     else:
         config.pop('setupKey', None)
+        path = webapp.config_path(args)
+        if '--generic' not in args and webapp.read_values(path).get('setup_key'):
+            try:   # this package can't upload, and neither may the one before it (AUG-1786)
+                webapp.write_values(path, {'setup_key': ''})
+            except (OSError, ValueError) as e:
+                sys.exit('Could not clear setup_key: %s' % e)
     build('--preview' in args or '--preview-tokens' in args, config, profile, '--preview-tokens' in args)
+
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
