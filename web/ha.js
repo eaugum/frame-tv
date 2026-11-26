@@ -14,7 +14,7 @@ var HA = (function () {
   function trim(s) { return String(s || '').replace(/^\s+|\s+$/g, ''); }
 
   var URL = trim(Settings.get('homeAssistantUrl')).replace(/\/+$/, '');
-  var TOKEN = trim(Settings.get('homeAssistantToken'));
+  var TOKEN = trim(Settings.token('homeAssistantToken'));   // '' when it was set for another address
   var ON = Modules.on('homeAssistant');
   var SAMPLE = ON && !(URL && TOKEN) && TV.name === 'browser';
   var PING = 30000, PONG = 10000, BACKOFF = [2000, 5000, 15000, 30000, 60000];

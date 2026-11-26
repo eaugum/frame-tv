@@ -31,6 +31,14 @@ var Settings = (function () {
   function save() { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {} }
   function empty(v) { return v === undefined || v === null || v === '' || (v instanceof Array && !v.length); }
   function file(key) { return JSON.stringify(CONFIG[key] === undefined ? null : CONFIG[key]); }
+
+  // A token belongs to one origin (AUG-1787): the address it was set or linked for. Each token and its address:
+  var ADDRESS_OF = {homeAssistantToken: 'homeAssistantUrl', artKey: 'artUrl', staseraToken: 'staseraUrl'};
+  /** An address's origin: scheme, host and port, lower case; '' for one that can't be read (then no token goes). */
+  function origin(url) {
+    var m = /^\s*(https?:\/\/[^\/?#\\\s]+)(?:[\/?#\\]|\s*$)/i.exec(typeof url === 'string' ? url : '');
+    return m ? m[1].toLowerCase() : '';
+  }
   // An empty value in the file is the same as none, so a build that adds a key empty keeps what the TV set.
   function same(a, b) {
     function plain(json) { try { return empty(JSON.parse(json)) ? 'null' : json; } catch (e) { return json; } }
@@ -56,20 +64,44 @@ var Settings = (function () {
     return n >= 1 && n <= 1440 ? n : DEFAULTS[key];
   }
 
+  function get(key) {
+    var s = saved[key];
+    if (s && same(s.file, file(key))) return usable(key, s.v);
+    if (s) { delete saved[key]; save(); }   // the file changed since: it wins
+    return usable(key, empty(CONFIG[key]) ? DEFAULTS[key] : CONFIG[key]);
+  }
+  function changed(key) { return !!saved[key] && same(saved[key].file, file(key)); }
+  /** The origin a token belongs to: the address it was typed for on the TV (none before AUG-1787), or the file's. */
+  function issued(key) {
+    if (changed(key)) return saved[key].origin || '';
+    var at = ADDRESS_OF[key];
+    return origin(empty(CONFIG[at]) ? DEFAULTS[at] : CONFIG[at]);
+  }
+
   return {
-    get: function (key) {
-      var s = saved[key];
-      if (s && same(s.file, file(key))) return usable(key, s.v);
-      if (s) { delete saved[key]; save(); }   // the file changed since: it wins
-      return usable(key, empty(CONFIG[key]) ? DEFAULTS[key] : CONFIG[key]);
+    get: get,
+    set: function (key, value) {
+      saved[key] = {v: value, file: file(key)};
+      if (ADDRESS_OF[key]) saved[key].origin = origin(get(ADDRESS_OF[key]));   // the address it's typed for
+      save();
     },
-    set: function (key, value) { saved[key] = {v: value, file: file(key)}; save(); },
     /** Back to what the file says. */
     reset: function (key) { delete saved[key]; save(); },
     /** Every setting's name. */
     keys: function () { return Object.keys(DEFAULTS); },
     /** Whether the TV's value applies rather than the file's. */
-    changed: function (key) { return !!saved[key] && same(saved[key].file, file(key)); }
+    changed: changed,
+    origin: origin,
+    /** A new sign-in's or link's own name, so what's cached for it isn't shown for another (a TV's clock can go back). */
+    mark: function () { return Date.now() + '.' + Math.random().toString(36).slice(2); },
+    issued: issued,
+    /** A setting as it may be used: a token only while its address is the one it belongs to, else ''. */
+    token: function (key) {
+      var value = get(key);
+      if (!ADDRESS_OF[key]) return value;
+      var now = origin(get(ADDRESS_OF[key]));
+      return now && now === issued(key) ? value : '';
+    }
   };
 })();
 
@@ -106,9 +138,10 @@ var Modules = (function () {
     youtube: function () { return !!(get('youtubeClientId') && get('youtubeClientSecret')); },
     github: function () { return !!get('githubToken'); },
     vercel: function () { return !!get('vercelToken'); },
-    homeAssistant: function () { return !!(get('homeAssistantUrl') && get('homeAssistantToken')); },
+    homeAssistant: function () { return !!(get('homeAssistantUrl') && Settings.token('homeAssistantToken')); },
     spotify: function () { return !!(get('spotifyClientId') && get('spotifyRefreshToken')); },
-    art: function () { return !!get('artUrl'); }
+    // A key isn't needed, but one for another address is as good as none: then nothing is sent at all.
+    art: function () { return !!get('artUrl') && !(get('artKey') && !Settings.token('artKey')); }
   };
   return {
     on: function (name) {

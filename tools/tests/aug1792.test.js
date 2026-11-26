@@ -215,7 +215,7 @@ test('T65: a status with other types does not throw, and Home is drawn', () => {
 
 // MARK: - T87: Stasera's fetching is always reset
 
-const STASERA = {config: {stasera: true, staseraUrl: 'https://stasera.test'}, storage: {'fmtv.stasera.token': 'fake-stasera-token'}};
+const STASERA = {config: {stasera: true, staseraUrl: 'https://stasera.test'}, storage: {'fmtv.stasera.token': 'fake-stasera-token', 'fmtv.stasera.link': {origin: 'https://stasera.test', id: 'fake-link'}}};
 const HOME = {watching: [{kind: 'show', titleId: 1, title: 'Fake Show', providers: [], networks: []}], watchingCount: 1,
   wantToStart: [], movies: [], friends: [], stats: null};
 
@@ -392,7 +392,7 @@ test('ST24 Stasera: a huge hourCounts length in the cache does not hang the star
   const r = isolated(function (loadApp, input) {
     const app = loadApp({config: input.config, storage: input.storage});
     return {ranToEnd: typeof app.window.FrameTV === 'object', asked: app.requests.map((x) => x.url)};
-  }, {config: STASERA.config, storage: {'fmtv.stasera.token': 'fake-stasera-token',
+  }, {config: STASERA.config, storage: {'fmtv.stasera.token': 'fake-stasera-token', 'fmtv.stasera.link': {origin: 'https://stasera.test', id: 'fake-link'},
     'fmtv.stasera.home2': {data: {watching: [], wantToStart: [], movies: [], friends: [],
       stats: {totalEpisodes: 1, hourCounts: {length: 1e300}}}, at: NOW}}});
   assert.equal(r.ranToEnd, true);
@@ -402,7 +402,7 @@ test('ST24 Stasera: a huge hourCounts length in the cache does not hang the star
 test('ST24 Stasera: a cached record of the wrong types is cleaned or dropped at start', () => {
   for (const c of [{data: 'x'}, {data: {watching: 'abc', stats: 5}, name: POISON, hello: {text: POISON, lang: 'en', at: NOW}},
     {data: {watching: [null, {title: POISON}]}}, 7]) {
-    const app = staseraApp({storage: {'fmtv.stasera.token': 'fake-stasera-token', 'fmtv.stasera.home2': c}});
+    const app = staseraApp({storage: {'fmtv.stasera.token': 'fake-stasera-token', 'fmtv.stasera.link': {origin: 'https://stasera.test', id: 'fake-link'}, 'fmtv.stasera.home2': c}});
     assertStarted(app, JSON.stringify(c));
     assert.ok(app.requests.some((r) => /\/tv\/home/.test(r.url)), 'Stasera is asked');
   }
@@ -412,7 +412,7 @@ test('ST24 Stasera: a cached record of the wrong types is cleaned or dropped at 
 
 test('a module that throws while drawing leaves the others drawn, the apps loaded and the refresh sent', () => {
   const on = {config: {github: true, githubToken: 'fake-github-token-not-real', art: true, artUrl: 'http://art.test:8099',
-    stasera: true, staseraUrl: 'https://stasera.test'}, storage: {'fmtv.stasera.token': 'fake-stasera-token'}};
+    stasera: true, staseraUrl: 'https://stasera.test'}, storage: {'fmtv.stasera.token': 'fake-stasera-token', 'fmtv.stasera.link': {origin: 'https://stasera.test', id: 'fake-link'}}};
   const planted = [
     ['GitHub.summary', {'github.js': "GitHub.summary = function () { throw new Error('planted by the test'); };"}, 'GitHub'],
     ['Art.showing', {'art.js': "Art.showing = function () { throw new Error('planted by the test'); };"}, 'Art Mode'],
@@ -437,8 +437,8 @@ const YT = {config: {youtube: true, youtubeClientId: 'fake-client-id', youtubeCl
 
 /** YouTube signed in (made-up refresh token), with a cache of these playlists. */
 function youtubeStorage(playlists) {
-  return {'fmtv.youtube.auth': {refresh: 'fake-refresh-token', access: '', expires: 0, name: 'Fake'},
-    'fmtv.youtube': {client: 'fake-client-id', data: {channels: [], playlists, channelsAt: NOW, videos: [], saved: [],
+  return {'fmtv.youtube.auth': {refresh: 'fake-refresh-token', access: '', expires: 0, name: 'Fake', client: 'fake-client-id', id: 'fake-sign-in'},
+    'fmtv.youtube': {client: 'fake-client-id', account: 'fake-sign-in', data: {channels: [], playlists, channelsAt: NOW, videos: [], saved: [],
       savedFor: '', at: NOW}}};
 }
 
@@ -506,7 +506,7 @@ test('round 3: Data.refresh throwing still lets Stasera and GitHub be asked', ()
   let caught = null;
   try {
     load({config: {github: true, githubToken: 'fake-github-token-not-real', stasera: true, staseraUrl: 'https://stasera.test'},
-      storage: {'fmtv.stasera.token': 'fake-stasera-token'},
+      storage: {'fmtv.stasera.token': 'fake-stasera-token', 'fmtv.stasera.link': {origin: 'https://stasera.test', id: 'fake-link'}},
       after: {'data.js': "Data.refresh = function () { throw new Error('planted by the test'); };"}});
   } catch (e) { caught = e; }
   // The approved smoke test wants this throw to reach the start (smoke.test.js:107); what matters here is who was asked.
@@ -542,7 +542,7 @@ test('round 3: a module that throws in the 30-second loop does not stop the scre
 
 test("a module whose refresh throws doesn't stop the others' refresh", () => {
   const app = load({config: {github: true, githubToken: 'fake-github-token-not-real', stasera: true, staseraUrl: 'https://stasera.test'},
-    storage: {'fmtv.stasera.token': 'fake-stasera-token'},
+    storage: {'fmtv.stasera.token': 'fake-stasera-token', 'fmtv.stasera.link': {origin: 'https://stasera.test', id: 'fake-link'}},
     after: {'stasera.js': "Stasera.refresh = function () { throw new Error('planted by the test'); };"}});
   const s = assertStarted(app, 'Stasera.refresh throws');
   assert.ok(s.asked.some((u) => /api\.github\.com/.test(u)), 'GitHub, after Stasera, was asked');

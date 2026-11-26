@@ -57,6 +57,12 @@ In `config.properties` these are comma-separated, and `entity:Name` overrides th
 ### When it's missing or wrong
 
 - Without the address or the token: the module stays off.
+- "On · Missing Token" after a new address on the TV: the token belongs to the address it was set for, so the TV
+  doesn't send it to the new one. Type the token again, or put the old address back. See
+  [modules.md](modules.md#how-settings-work).
+- "http:// sends the token unencrypted": over `http://`, anyone who can see the traffic between the TV and Home
+  Assistant can read the token, and a long-lived token works until it's deleted. Keep Home Assistant on your own
+  network, or use `https://` with a certificate the TV trusts, and give the TV a user of its own (see below).
 - "Home Assistant didn't accept the token (home_assistant_token).": the token is wrong, or it has been deleted. Make a
   new one.
 - "Can't reach Home Assistant.": the TV doesn't get through to the address. It keeps trying by itself. Note that the

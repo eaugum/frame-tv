@@ -33,31 +33,41 @@ var YouTube = (function () {
     ['Every Zelda game, ranked', 'Retro Games Daily', 5 * DAY, 3105, '#8A4FD0']
   ];
 
-  // auth: {refresh, access, expires (ms), name}
+  // auth: {refresh, access, expires (ms), name, client: the OAuth client it was signed in with, id: this sign-in's (AUG-1787)}
   // data: {channels: [{id, title, all: true when it has no UULF playlist}], playlists: [{id, title}], channelsAt,
   //        videos and saved (the playlist, last added first): [{id, title, channel, at, duration (s), views, thumb,
   //        picture}], savedFor: the playlist saved is from, at}
   function empty() { return {channels: [], playlists: [], channelsAt: 0, videos: [], saved: [], savedFor: '', at: 0}; }
   var auth = null, data = empty();
-  try {
-    auth = JSON.parse(localStorage.getItem(AUTH));
-    var c = JSON.parse(localStorage.getItem(CACHE));
-    if (auth && c && c.client === CLIENT && c.data && c.data.playlists) data = c.data;
-    if (data.saved.length && !data.savedFor) data.at = 0;   // a cache from before savedFor: ask again at once
-  } catch (e) {}
-  if (!auth || !auth.refresh) auth = null;
-  // A sign-in sent to config.properties (AUG-1521): a new one there wins once, so signing out on the TV stays.
+  try { auth = JSON.parse(localStorage.getItem(AUTH)); } catch (e) {}
+  if (!auth || typeof auth !== 'object' || !auth.refresh) auth = null;
+  // A sign-in sent to config.properties (AUG-1521): a new one there wins once, so signing out on the TV stays. It
+  // belongs to the file's client, also when the old code seeded it.
   var SEED = Settings.get('youtubeRefreshToken'), SEEDED = 'fmtv.youtube.seed';
+  var FILE_CLIENT = String(CONFIG.youtubeClientId || '').replace(/^\s+|\s+$/g, '');
   try {
     if (SEED && localStorage.getItem(SEEDED) !== SEED) {
-      if (!auth || auth.refresh !== SEED) { auth = {refresh: SEED, access: '', expires: 0, name: ''}; data = empty(); }
       localStorage.setItem(SEEDED, SEED);
+      if (!auth || auth.refresh !== SEED) auth = {refresh: SEED, access: '', expires: 0, name: ''};
+    }
+    if (SEED && auth && auth.refresh === SEED && (auth.client !== FILE_CLIENT || !auth.id)) {
+      auth.client = FILE_CLIENT;
+      auth.id = Settings.mark();
       localStorage.setItem(AUTH, JSON.stringify(auth));
     }
   } catch (e) {}
+  // Signed in before AUG-1787 (no client), or with another client: kept, not used; Home Settings asks to sign in.
+  if (auth && !(auth.client && auth.client === CLIENT && auth.id)) auth = null;
+  try {
+    var c = JSON.parse(localStorage.getItem(CACHE));
+    if (auth && c && c.client === CLIENT && c.account === auth.id && c.data && c.data.playlists) data = c.data;
+    if (data.saved.length && !data.savedFor) data.at = 0;   // a cache from before savedFor: ask again at once
+  } catch (e) {}
 
   function saveAuth() { try { localStorage.setItem(AUTH, JSON.stringify(auth)); } catch (e) {} }
-  function save() { try { localStorage.setItem(CACHE, JSON.stringify({client: CLIENT, data: data})); } catch (e) {} }
+  function save() {
+    try { localStorage.setItem(CACHE, JSON.stringify({client: CLIENT, account: auth && auth.id, data: data})); } catch (e) {}
+  }
 
   var listeners = [];
   function changed() { for (var i = 0; i < listeners.length; i++) listeners[i](); }
@@ -119,11 +129,11 @@ var YouTube = (function () {
         if (pairing !== p) return;
         var error = json && json.error;
         if (status === 200 && json && json.refresh_token) {
-          auth = {refresh: json.refresh_token, access: json.access_token, expires: Date.now() + (json.expires_in || 3600) * 1000, name: ''};
+          auth = {refresh: json.refresh_token, access: json.access_token, expires: Date.now() + (json.expires_in || 3600) * 1000, name: '',
+            client: CLIENT, id: Settings.mark()};
+          data = empty();   // maybe another account: nothing of the last one's
           saveAuth();
           pairing = null;
-          data.at = 0;
-          data.channelsAt = 0;
           changed();
           whoAmI();
           refresh(true);

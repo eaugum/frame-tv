@@ -39,7 +39,7 @@ function google(state) {
 function signedIn(state) {
   const app = loadApp({
     config: {youtube: true, youtubeClientId: 'fake-client-id', youtubeClientSecret: 'fake-client-secret'},
-    storage: {'fmtv.youtube.auth': {refresh: 'FAKE-REFRESH', access: '', expires: 0, name: 'Fake'}},
+    storage: {'fmtv.youtube.auth': {refresh: 'FAKE-REFRESH', access: '', expires: 0, name: 'Fake', client: 'fake-client-id', id: 'fake-sign-in'}},
     xhr: google(state)
   });
   return app;

@@ -14,6 +14,19 @@ together, see [overview.md](overview.md). If something doesn't work, see [troubl
   `true` turns the module on once it has what it needs. `false`, empty or missing is off. Anything else stops the build.
 - **Secrets:** tokens end up in the app on the TV. Give them as little access as you can, and never commit
   `config.properties` (it's gitignored).
+- **A token belongs to its address:** the Home Assistant token, the Art Mode key and the Stasera link are only sent to
+  the address they were set or linked for (its scheme, host and port). A token in the file belongs to the address in
+  the file, or the default. Change the address on the TV, and the TV keeps the token but doesn't send it: Connections
+  says "On · Missing Token" (or Key), the token's row says "For another address", and Stasera asks to be linked again.
+  Type the token again, link again, or put the old address back, and it works. A token typed, a Stasera link or a
+  YouTube sign-in made on the TV before this rule came has no address, so it has to be done once more; tokens from
+  the file keep working. What Stasera and YouTube keep from their last answer belongs to that link or sign-in too.
+- **http:// and tokens:** over `http://` the token goes unencrypted, so anyone who can see the network traffic between
+  the TV and the address can read it and use it. On your own network that is usually only the devices on it; across
+  the internet it is anyone on the way. Use `https://` when the service has it (Home Assistant with a certificate the
+  TV trusts, for example through Nabu Casa or a reverse proxy), and give the token as little access as you can. The
+  service's page under Connections says "http:// sends the token unencrypted", and `tools/setup.py` warns when it
+  starts or saves with such an address. Nothing is blocked.
 - **The backup:** the TV forgets its own changes when the app is uninstalled. See [Upload config](#upload-config).
 
 On the TV, the gear → Connections says how each module stands:
@@ -22,7 +35,7 @@ On the TV, the gear → Connections says how each module stands:
 |---|---|
 | Not set up | The switch is off, and something the module needs is missing |
 | Off | The switch is off, and everything is in place |
-| On · Missing … | The switch is on, but the named setting is empty, so the module stays off |
+| On · Missing … | The switch is on, but the named setting is empty or a token is for another address, so the module stays off |
 | On · Not linked / Not signed in | Stasera or YouTube is on, and the TV hasn't been linked or signed in yet |
 | On · Linked / Signed in | It's running |
 | On | Everything is in place. The token itself isn't tested here; the tab shows any error |
@@ -54,7 +67,8 @@ The linked TVs are listed under Connections on stasera.app, and a TV can be unli
 **When it's missing or wrong:**
 
 - Without the module: Home shows YouTube (when that's on) or the apps, and the TV tab has the clock and the apps.
-- Not linked: Home offers "Link this TV to Stasera".
+- Not linked: Home offers "Link this TV to Stasera". So it does after the address was changed on the TV: the link
+  belongs to the address it was made with.
 - Unlinked on stasera.app: the TV notices at its next call and goes back to not linked.
 - No connection: Home keeps showing the last answer without saying so. Linking, search and the title pages say
   "Couldn't reach Stasera."
@@ -221,6 +235,8 @@ It also tells the add-on what Frame TV does, for its Debug tab, and when it star
 **When it's missing or wrong:**
 
 - Without `art_url`: the module stays off.
+- With an `art_key` for another address (the address was changed on the TV): the module stays off and sends nothing,
+  and Connections says "On · Missing Key". Type the key again, or put the old address back.
 - Without `art_key`, with the wrong key, or with an add-on that doesn't answer: the module is on, but the buttons say
   "Couldn't reach Art Mode on the Pi." The TV can't tell these apart, so check the key first.
 - When the screensaver starts and the add-on doesn't answer, Frame TV shows its own screensaver instead.

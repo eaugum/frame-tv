@@ -465,6 +465,7 @@ body {
 .box .row.focus { background: rgba(255, 255, 255, 0.13); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14); }
 .box .row .value { position: absolute; right: 24px; top: 0; color: rgba(255, 255, 255, 0.92); font-weight: 500; }
 .box .row .value .chev { color: rgba(255, 255, 255, 0.35); margin: 0 10px; }
+.box .row .value.beside { right: 126px; color: rgba(255, 255, 255, 0.4); }
 .box .row .value .sym { width: 26px; height: 26px; vertical-align: -3px; }
 .box .row.dim { color: rgba(255, 255, 255, 0.4); }
 .box .row > .sym { width: 30px; height: 30px; vertical-align: -5px; margin-right: 18px; color: rgba(255, 255, 255, 0.85); }

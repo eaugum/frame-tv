@@ -46,6 +46,8 @@ NEEDS = {'stasera': [], 'youtube': ['youtube_client_id', 'youtube_client_secret'
          'github': ['github_token'], 'vercel': ['vercel_token'],
          'home_assistant': ['home_assistant_url', 'home_assistant_token'],
          'spotify': ['spotify_client_id', 'spotify_refresh_token'], 'art': ['art_url']}
+# Each address and the token the TV sends there (AUG-1787; the TV keeps a token to the address it came with).
+TOKEN_AT = (('home_assistant_url', 'home_assistant_token'), ('art_url', 'art_key'), ('stasera_url', 'stasera_token'))
 
 
 def schema():
@@ -127,6 +129,13 @@ def switched_on_without(values):
         if missing:
             out.append('%s can only be on with %s' % (switch, ' and '.join(missing)))
     return out
+
+
+def plain_http(values):
+    """Warnings for a token that goes to an http:// address: anyone on the way can read it."""
+    return ['Warning: %s is http://, so %s goes there unencrypted. Use https:// if it has it (docs/modules.md).'
+            % (url, token) for url, token in TOKEN_AT
+            if values.get(token) and values.get(url, '').strip().lower().startswith('http://')]
 
 
 def clean(values):
@@ -349,6 +358,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             webapp.write_values(self.server.config, values)
         except (OSError, ValueError) as e:   # the file is as it was
             return self.send(400, {'problems': [str(e)]})
+        for line in plain_http(dict(old, **values)):
+            print(line, flush=True)
         self.send(200, {'ok': True})
 
     def from_tv_changes(self):
@@ -508,6 +519,8 @@ def main():
         sys.exit('No free port from %d.' % port)
     url = 'http://127.0.0.1:%d/#key=%s' % (server.server_address[1], server.key)   # the page's only way to the key
     print('Frame TV setup: %s (%s). Ctrl-C stops it.' % (url, os.path.relpath(path, ROOT)), flush=True)
+    for line in plain_http(read(path)):
+        print(line, flush=True)
     tv = server.listen_for_tv()
     if tv:
         print('"Upload config" on the TV: %s' % tv, flush=True)

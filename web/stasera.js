@@ -15,6 +15,8 @@ var Stasera = (function () {
   var BASE = Settings.get('staseraUrl').replace(/\/+$/, '');
   var ON = !!BASE && Modules.on('stasera');
   var TOKEN = 'fmtv.stasera.token', CACHE = 'fmtv.stasera.home2';
+  // Where the token was linked, {origin, id} (AUG-1787): it goes only there, and the cache is the link's (id).
+  var LINK = 'fmtv.stasera.link', HERE = Settings.origin(BASE);
   var EVERY = 5 * 60000, POLL = 3000;
   var EMPTY = {watching: [], watchingCount: 0, shelves: null, wantToStart: [], movies: [], friends: [], stats: null};
 
@@ -26,30 +28,52 @@ var Stasera = (function () {
   // Names that would hide Object's own (a value there makes String() or a lookup throw).
   var OWN = /^(toString|valueOf|hasOwnProperty|toLocaleString|isPrototypeOf|propertyIsEnumerable|constructor|__proto__|toJSON)$/;
 
-  var token = null, data = EMPTY, at = 0, name = '', hello = null, askedFor = '', askedMe = false;
+  var token = null, bound = null, data = EMPTY, at = 0, name = '', hello = null, askedFor = '', askedMe = false;
+  try { bound = JSON.parse(localStorage.getItem(LINK)); } catch (e) {}
   try {
     token = localStorage.getItem(TOKEN);
     localStorage.removeItem('fmtv.stasera');   // the lists before /tv/home
+    // A link sent to config.properties (AUG-1521): a new one there wins once, so unlinking on the TV stays. It
+    // belongs to the file's address, also when the old code seeded it.
+    var seed = Settings.get('staseraToken');
+    if (seed && localStorage.getItem('fmtv.stasera.seed') !== seed) {
+      localStorage.setItem('fmtv.stasera.seed', seed);
+      if (token !== seed) { localStorage.removeItem(CACHE); keep(seed, Settings.issued('staseraToken')); }
+    }
+    if (seed && token === seed && !(bound && bound.origin === Settings.issued('staseraToken'))) {
+      keep(seed, Settings.issued('staseraToken'));
+    }
+    // Linked before AUG-1787 (no origin) or at another address: kept, not used; Home Settings offers a new link.
+    if (!(bound && bound.id && bound.origin && bound.origin === HERE)) token = null;
     // Checked as an answer is (and movies saved before AUG-1477 become a list).
     var c = JSON.parse(localStorage.getItem(CACHE));
-    if (c && token && c.data && typeof c.data === 'object') {
+    if (c && token && c.link === bound.id && c.data && typeof c.data === 'object') {
       data = clean(c.data, c.data.shelves);
       at = typeof c.at === 'number' && isFinite(c.at) ? c.at : 0;
       name = text(c.name);
       hello = c.hello && text(c.hello.text) && text(c.hello.lang) && typeof c.hello.at === 'number' ? c.hello : null;
     }
-    // A link sent to config.properties (AUG-1521): a new one there wins once, so unlinking on the TV stays.
-    var seed = Settings.get('staseraToken');
-    if (seed && localStorage.getItem('fmtv.stasera.seed') !== seed) {
-      if (token !== seed) { token = seed; data = EMPTY; at = 0; name = ''; hello = null; }
-      localStorage.setItem('fmtv.stasera.seed', seed);
-      localStorage.setItem(TOKEN, token);
-    }
-  } catch (e) {}
+  } catch (e) { token = null; }
+
+  /** Saves a new token with the origin it belongs to; a new link starts an empty cache. */
+  function keep(t, from) {
+    token = t;
+    bound = {origin: from, id: Settings.mark()};
+    data = EMPTY; at = 0; name = ''; hello = null;
+    // In this order, a write that fails (a full localStorage) leaves no record, so the token stored is unused, never
+    // the last token paired with this origin.
+    try {
+      localStorage.removeItem(LINK);
+      localStorage.setItem(TOKEN, t);
+      localStorage.setItem(LINK, JSON.stringify(bound));
+    } catch (e) {}
+  }
 
   var listeners = [];
   function changed() { for (var i = 0; i < listeners.length; i++) listeners[i](); }
-  function save() { try { localStorage.setItem(CACHE, JSON.stringify({data: data, at: at, name: name, hello: hello})); } catch (e) {} }
+  function save() {
+    try { localStorage.setItem(CACHE, JSON.stringify({data: data, at: at, name: name, hello: hello, link: bound && bound.id})); } catch (e) {}
+  }
 
   /** One call to Stasera's API; done(status, json). Status 0: no connection. */
   function request(method, path, body, done) {
@@ -84,7 +108,7 @@ var Stasera = (function () {
     name = '';
     hello = null;
     askedMe = false;
-    try { localStorage.removeItem(TOKEN); localStorage.removeItem(CACHE); } catch (e) {}
+    try { localStorage.removeItem(TOKEN); localStorage.removeItem(LINK); localStorage.removeItem(CACHE); } catch (e) {}
     changed();
   }
 
@@ -116,10 +140,8 @@ var Stasera = (function () {
       request('POST', '/tv/pair/poll', {secret: pairing.secret}, function (status, json) {
         if (!pairing) return;
         if (status === 200 && json && json.status === 'approved' && json.token) {
-          token = json.token;
-          try { localStorage.setItem(TOKEN, token); } catch (e) {}
+          keep(json.token, HERE);   // the server this run talks to, not a new address waiting for the restart
           pairing = null;
-          at = 0;
           changed();
           refresh();
         } else if (status === 410 || Date.now() > pairing.expiresAt) {

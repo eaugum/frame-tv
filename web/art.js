@@ -17,7 +17,9 @@ var Art = (function () {
   'use strict';
 
   var URL = String(Settings.get('artUrl') || '').replace(/^\s+|\s+$/g, '').replace(/\/+$/, '');
-  var KEY = String(Settings.get('artKey') || '').replace(/^\s+|\s+$/g, '');
+  var KEY = String(Settings.token('artKey') || '').replace(/^\s+|\s+$/g, '');
+  // A key for another address (AUG-1787): no events, report or status there either, as without an address.
+  if (Settings.get('artKey') && !KEY) URL = '';
   var ON = Modules.on('art');
   var SAMPLE = ON && !URL && TV.name === 'browser';
   var EVERY = 5 * 60000;

@@ -3119,11 +3119,24 @@
     for (var i = 0; i < list.length; i++) if (list[i].key === key) return list[i];
   }
 
-  /** What a service lacks before it can be turned on, as "Missing client ID". */
+  /** What a service lacks before it can be turned on, as "Missing client ID"; a token for another address is missing. */
   function missing(s) {
     var lacks = [];
-    for (var i = 0; i < s.needs; i++) if (!Settings.get(s.settings[i][0])) lacks.push(s.settings[i][1]);
+    for (var i = 0; i < s.settings.length; i++) {
+      var k = s.settings[i][0];
+      if (i < s.needs ? !Settings.token(k) : elsewhere(k)) lacks.push(s.settings[i][1]);
+    }
     return trf('Missing {what}', {what: lacks.join(', ')});
+  }
+
+  /** A token that was set for another address than the one now (AUG-1787): kept, but not used. */
+  function elsewhere(key) { return !!Settings.get(key) && !Settings.token(key); }
+
+  /** The warning for a token sent over http:// (it still goes: the TV's own network may be all there is). */
+  function plainWarning(key) {
+    var s = service(key), url = s.settings[0][0], tok = key === 'stasera' ? Stasera.linked() : Settings.token(s.settings[1][0]);
+    if (!/^http:\/\//i.test(String(Settings.get(url) || '')) || !tok) return '';
+    return key === 'art' ? tr('http:// sends the key unencrypted') : tr('http:// sends the token unencrypted');
   }
 
   /** On or off, and for Stasera and YouTube whether the TV is linked; until a reload that is what's running now. */
@@ -3144,11 +3157,13 @@
     var s = service(key), on = Settings.get(key) === true, rows = [];
     if (!on && !Modules.ready(key)) rows.push({label: s.name, value: missing(s), dim: true, step: function () {}});
     else {
-      rows.push({label: s.name, toggle: on, step: function () {
+      rows.push({label: s.name, toggle: on, value: on && !Modules.ready(key) ? serviceValue(s) : '', step: function () {
         Settings.set(key, !on);
         needsReload();
       }});
     }
+    var warning = ADDRESSES.indexOf(s.settings[0][0]) >= 0 ? plainWarning(key) : '';
+    if (warning) rows.push({label: warning, value: '', dim: true, step: function () {}});
     if (key === 'stasera' && Stasera.enabled()) {
       rows.push({label: tr('Link'), value: Stasera.linked() ? tr('Linked') : tr('Link'), opens: true, link: true,
         step: function (d) { if (d >= 0) openLink('stasera'); }});
@@ -3179,6 +3194,7 @@
     if (v instanceof Array) return v.length ? v.join(', ') : tr('None');
     v = String(v || '');
     if (!v) return tr('None');
+    if (elsewhere(key)) return tr('For another address');
     if (secret(key)) return '••••' + v.slice(-4);
     return v.length > 28 ? v.slice(0, 27) + '…' : v;
   }
@@ -3194,7 +3210,9 @@
       if (d < 0) return;
       var now = Settings.get(key), list = now instanceof Array;
       openTyping(c[1], secret(key) ? '' : list ? now.join(', ') : String(now || ''),
-        secret(key) ? tr('Easier on the Mac: tools/setup.py.') : list ? tr('Separate them with commas.') : '',
+        secret(key) ? tr('Easier on the Mac: tools/setup.py.') : list ? tr('Separate them with commas.') :
+          key === 'artUrl' ? tr('A new address needs the key again.') :
+          ADDRESSES.indexOf(key) >= 0 ? tr('A new address needs the token again.') : '',
         function (text, finish) {
           checkSetting(key, text, c[2], function (why, value) {
             if (why) { finish(why); return; }
@@ -3318,7 +3336,10 @@
     list.style.height = Math.min(Math.max(rowsNow.length, 1), 7) * 78 + 'px';
     for (var i = 0; i < rowsNow.length; i++) {
       var r = rowsNow[i], row = el('div', 'row' + (r.dim ? ' dim' : ''), holder, r.label);
-      if (r.toggle !== undefined) setClass(el('div', 'toggle', row), 'on', r.toggle);
+      if (r.toggle !== undefined) {
+        if (r.value) el('span', 'value beside', row, r.value);
+        setClass(el('div', 'toggle', row), 'on', r.toggle);
+      }
       else if (r.check !== undefined) {
         var c = el('span', 'value', row, r.value);
         if (r.check) sym('check', c).style.marginLeft = '16px';
